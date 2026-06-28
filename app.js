@@ -240,6 +240,43 @@ function setupAuthFormListeners() {
             btn.disabled = false;
         }
     });
+
+    // Submit da Atualização de Licença (Reativar com Nova Chave)
+    const licenseUpdateForm = document.getElementById('auth-license-update-form');
+    if (licenseUpdateForm) {
+        licenseUpdateForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const key = document.getElementById('new-access-key-input').value.trim();
+            
+            const btn = document.getElementById('btn-update-license');
+            const originalContent = btn.innerHTML;
+            btn.innerHTML = '<span>Verificando...</span> <i class="fa-solid fa-spinner fa-spin"></i>';
+            btn.disabled = true;
+            
+            try {
+                const res = await fetch('/api/auth/update-license', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showToast('Licença atualizada com sucesso! Reiniciando...', 'success');
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    showToast(data.error || 'Chave inválida ou expirada.', 'error');
+                }
+            } catch (err) {
+                console.error(err);
+                showToast('Erro de conexão ao atualizar a chave de licença.', 'error');
+            } finally {
+                btn.innerHTML = originalContent;
+                btn.disabled = false;
+            }
+        });
+    }
     
     // Botão de Logout no Header
     document.getElementById('btn-logout').addEventListener('click', async () => {

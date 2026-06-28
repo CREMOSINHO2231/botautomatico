@@ -244,6 +244,36 @@ app.post('/api/auth/setup', async (req, res) => {
     }
 });
 
+// ROTA: Atualizar Licença (Quando Expirada/Bloqueada)
+app.post('/api/auth/update-license', async (req, res) => {
+    const { key } = req.body;
+    if (!key) {
+        return res.status(400).json({ error: "A chave de acesso é obrigatória." });
+    }
+    
+    // Limpar o cache de licenças para forçar uma verificação limpa e atualizada online
+    licenseCache.clear();
+    
+    // Validar a nova chave online
+    const licCheck = await checkLicenseStatus(key);
+    if (!licCheck.valid) {
+        return res.status(400).json({ error: `Chave inválida ou expirada: ${licCheck.error}` });
+    }
+    
+    // Carregar configuração atual e atualizar a chave
+    const config = getAppConfig() || { admin: {} };
+    if (!config.admin) config.admin = {};
+    
+    config.admin.accessKey = key;
+    config.admin.accessKeyHash = getSha256Hash(key);
+    
+    if (saveAppConfig(config)) {
+        res.json({ success: true });
+    } else {
+        res.status(500).json({ error: "Falha ao salvar a nova chave no servidor." });
+    }
+});
+
 // ROTA: Login
 app.post('/api/auth/login', async (req, res) => {
     const { email, password, key } = req.body;

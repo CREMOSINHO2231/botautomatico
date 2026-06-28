@@ -274,6 +274,54 @@ try {
             continue
         }
         
+        # ROTA: Atualizar Licença (Quando Expirada/Bloqueada)
+        elseif ($rawPath -eq "/api/auth/update-license" -and $request.HttpMethod -eq "POST") {
+            $reader = New-Object System.IO.StreamReader($request.InputStream)
+            $body = $reader.ReadToEnd()
+            $reader.Close()
+            
+            try {
+                $data = $body | ConvertFrom-Json
+                $key = $data.key
+                
+                if ([string]::IsNullOrEmpty($key)) {
+                    Send-JsonResponse $response 400 @{ error = "A chave de acesso é obrigatória." }
+                    continue
+                }
+                
+                # Limpar cache de licença para forçar verificação online
+                $global:LicenseCache.Clear()
+                
+                # Validar a nova chave online
+                $licCheck = Check-LicenseStatus $key
+                if (-not $licCheck.valid) {
+                    Send-JsonResponse $response 400 @{ error = "Chave inválida ou expirada: $($licCheck.error)" }
+                    continue
+                }
+                
+                # Carregar config, atualizar chave e salvar
+                $config = Get-AppConfig
+                if (-not $config) {
+                    $config = @{ admin = @{} }
+                }
+                if (-not $config.admin) {
+                    $config.admin = @{}
+                }
+                
+                $config.admin.accessKey = $key
+                $config.admin.accessKeyHash = Get-Sha256Hash $key
+                
+                if (Save-AppConfig $config) {
+                    Send-JsonResponse $response 200 @{ success = $true }
+                } else {
+                    Send-JsonResponse $response 500 @{ error = "Falha ao salvar a nova chave no servidor." }
+                }
+            } catch {
+                Send-JsonResponse $response 400 @{ error = "Dados inválidos: $($_.Exception.Message)" }
+            }
+            continue
+        }
+        
         # ROTA: Login Direto (Valida E-mail, Senha e Chave)
         elseif ($rawPath -eq "/api/auth/login") {
             if ($request.HttpMethod -ne "POST") {
