@@ -32,9 +32,9 @@ async function checkLicenseStatus(key) {
     }
     
     const now = Date.now();
-    // Verificar cache específico desta chave
+    // Verificar cache específico desta chave (1 minuto para testes rápidos)
     const cached = licenseCache.get(key);
-    if (cached && (now - cached.timestamp < 10 * 60 * 1000)) {
+    if (cached && (now - cached.timestamp < 1 * 60 * 1000)) {
         return { valid: cached.valid, error: cached.error };
     }
     

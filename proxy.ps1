@@ -67,7 +67,7 @@ function Check-LicenseStatus($key) {
     $now = Get-Date
     if ($global:LicenseCache.ContainsKey($key)) {
         $cached = $global:LicenseCache[$key]
-        if (($now - $cached.timestamp).TotalMinutes -lt 10) {
+        if (($now - $cached.timestamp).TotalMinutes -lt 1) {
             return @{ valid = $cached.valid; error = $cached.error }
         }
     }
