@@ -53,7 +53,7 @@ function Save-AppConfig($config) {
 $global:LicenseUrl = "https://lovely-energy-production-78fe.up.railway.app"
 $global:LicenseCache = @{} # key -> @{ valid = $true/$false; error = "..."; timestamp = [DateTime] }
 
-function Check-LicenseStatus($key) {
+function Check-LicenseStatus($key, $email) {
     if ([string]::IsNullOrEmpty($key)) {
         return @{ valid = $false; error = "Chave de licença não configurada." }
     }
@@ -81,7 +81,7 @@ function Check-LicenseStatus($key) {
         # Configurar protocolo TLS seguro para requisições externas
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         $urlClean = $global:LicenseUrl.TrimEnd('/')
-        $validationUrl = "$urlClean/api/validate?key=$([Uri]::EscapeDataString($key))"
+        $validationUrl = "$urlClean/api/validate?key=$([Uri]::EscapeDataString($key))&email=$([Uri]::EscapeDataString($email))"
         $response = Invoke-RestMethod -Uri $validationUrl -Method Get -TimeoutSec 8 -ErrorAction Stop
         
         if ($response) {
@@ -193,7 +193,13 @@ try {
                 }
                 
                 if ($key) {
-                    $check = Check-LicenseStatus $key
+                    $email = $null
+                    if ($config -and $config.admin -and $config.admin.email) {
+                        $email = $config.admin.email
+                    } elseif ($env:ADMIN_EMAIL) {
+                        $email = $env:ADMIN_EMAIL
+                    }
+                    $check = Check-LicenseStatus $key $email
                     if (-not $check.valid) {
                         $licenseExpired = $true
                         $licenseError = $check.error
@@ -245,7 +251,7 @@ try {
                 }
                 
                 # Validar se a licença/chave é ativa e válida online
-                $licCheck = Check-LicenseStatus $key
+                $licCheck = Check-LicenseStatus $key $email
                 if (-not $licCheck.valid) {
                     Send-JsonResponse $response 400 @{ error = "Chave invalida ou expirada: $($licCheck.error)" }
                     continue
@@ -293,7 +299,12 @@ try {
                 $global:LicenseCache.Clear()
                 
                 # Validar a nova chave online
-                $licCheck = Check-LicenseStatus $key
+                $config = Get-AppConfig
+                $email = $null
+                if ($config -and $config.admin -and $config.admin.email) {
+                    $email = $config.admin.email
+                }
+                $licCheck = Check-LicenseStatus $key $email
                 if (-not $licCheck.valid) {
                     Send-JsonResponse $response 400 @{ error = "Chave inválida ou expirada: $($licCheck.error)" }
                     continue
@@ -346,7 +357,7 @@ try {
                 }
                 
                 # Validar se a licença está ativa online
-                $licCheck = Check-LicenseStatus $key
+                $licCheck = Check-LicenseStatus $key $email
                 if (-not $licCheck.valid) {
                     Send-JsonResponse $response 403 @{ error = "Licenca inativa: $($licCheck.error)"; licenseExpired = $true }
                     continue
@@ -356,6 +367,9 @@ try {
                 $keyHash = Get-Sha256Hash $key
                 
                 if ($email -eq $config.admin.email -and $passHash -eq $config.admin.passwordHash -and $keyHash -eq $config.admin.accessKeyHash) {
+                    # Bloqueio de múltiplos dispositivos: Limpa todas as sessões anteriores!
+                    $global:Sessions.Clear()
+                    
                     # Gerar Session Token diretamente
                     $token = [System.Guid]::NewGuid().ToString()
                     $global:Sessions[$token] = (Get-Date).AddDays(7) # Valido por 7 dias
@@ -397,7 +411,13 @@ try {
             }
             
             if ($key) {
-                $check = Check-LicenseStatus $key
+                $email = $null
+                if ($config -and $config.admin -and $config.admin.email) {
+                    $email = $config.admin.email
+                } elseif ($env:ADMIN_EMAIL) {
+                    $email = $env:ADMIN_EMAIL
+                }
+                $check = Check-LicenseStatus $key $email
                 if (-not $check.valid) {
                     Send-JsonResponse $response 403 @{ error = $check.error; licenseExpired = $true }
                     continue

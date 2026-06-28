@@ -20,7 +20,7 @@ const LICENSE_URL = 'https://lovely-energy-production-78fe.up.railway.app';
 const licenseCache = new Map();
 
 // Helper: Validar Licença Online
-async function checkLicenseStatus(key) {
+async function checkLicenseStatus(key, email) {
     if (!key) {
         return { valid: false, error: "Nenhuma chave de licença configurada." };
     }
@@ -43,7 +43,7 @@ async function checkLicenseStatus(key) {
     
     try {
         console.log(`[Licença] Validando chave ${key} na API de licenças...`);
-        const validationUrl = `${LICENSE_URL.replace(/\/$/, '')}/api/validate?key=${encodeURIComponent(key)}`;
+        const validationUrl = `${LICENSE_URL.replace(/\/$/, '')}/api/validate?key=${encodeURIComponent(key)}&email=${encodeURIComponent(email || '')}`;
         const response = await axios.get(validationUrl, { timeout: 8000 });
         const data = response.data;
         
@@ -84,7 +84,8 @@ async function requireLicense(req, res, next) {
         return res.status(403).json({ error: "Chave de acesso/licença não configurada no servidor.", licenseExpired: true });
     }
     
-    const check = await checkLicenseStatus(key);
+    const email = (config && config.admin) ? config.admin.email : (process.env.ADMIN_EMAIL || null);
+    const check = await checkLicenseStatus(key, email);
     if (check.valid) {
         next();
     } else {
@@ -185,7 +186,8 @@ app.get('/api/auth/status', async (req, res) => {
     if (setupCompleted) {
         const key = (config && config.admin) ? config.admin.accessKey : (process.env.ACCESS_KEY || null);
         if (key) {
-            const check = await checkLicenseStatus(key);
+            const email = (config && config.admin) ? config.admin.email : (process.env.ADMIN_EMAIL || null);
+            const check = await checkLicenseStatus(key, email);
             if (!check.valid) {
                 licenseExpired = true;
                 licenseError = check.error;
@@ -220,7 +222,7 @@ app.post('/api/auth/setup', async (req, res) => {
     }
     
     // Validar se a chave/licença é ativa e válida online
-    const licCheck = await checkLicenseStatus(key);
+    const licCheck = await checkLicenseStatus(key, email);
     if (!licCheck.valid) {
         return res.status(400).json({ error: `Chave inválida ou expirada: ${licCheck.error}` });
     }
@@ -255,7 +257,9 @@ app.post('/api/auth/update-license', async (req, res) => {
     licenseCache.clear();
     
     // Validar a nova chave online
-    const licCheck = await checkLicenseStatus(key);
+    const config = getAppConfig();
+    const email = (config && config.admin) ? config.admin.email : null;
+    const licCheck = await checkLicenseStatus(key, email);
     if (!licCheck.valid) {
         return res.status(400).json({ error: `Chave inválida ou expirada: ${licCheck.error}` });
     }
@@ -302,7 +306,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
     
     // Validar se a chave digitada coincide e se a licença está ativa online
-    const licCheck = await checkLicenseStatus(key);
+    const licCheck = await checkLicenseStatus(key, email);
     if (!licCheck.valid) {
         return res.status(403).json({ error: `Licença inativa: ${licCheck.error}`, licenseExpired: true });
     }
@@ -311,6 +315,9 @@ app.post('/api/auth/login', async (req, res) => {
     const keyHash = getSha256Hash(key);
     
     if (email === adminEmail && passHash === adminPasswordHash && keyHash === adminKeyHash) {
+        // Bloqueio de múltiplos dispositivos: Limpa todas as sessões anteriores!
+        sessions.clear();
+        
         const token = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
         sessions.set(token, Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 dias
         res.json({ success: true, token });

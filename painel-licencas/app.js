@@ -234,6 +234,7 @@ function renderDashboard(keys) {
                             <i class="fa-regular fa-copy"></i>
                         </button>
                     </div>
+                    ${item.email ? `<div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;"><i class="fa-regular fa-user" style="margin-right: 4px;"></i>${item.email}</div>` : `<div style="font-size: 0.75rem; color: #22c55e; margin-top: 4px;"><i class="fa-solid fa-circle-dot" style="margin-right: 4px;"></i>Disponível</div>`}
                 </td>
                 <td style="padding: 1.1rem 1rem; color: var(--text-muted); font-family: monospace;">${formattedDate}</td>
                 <td style="padding: 1.1rem 1rem;">

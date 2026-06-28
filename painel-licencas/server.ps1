@@ -13,6 +13,21 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $scriptDir) { $scriptDir = Get-Location }
 $keysFile = Join-Path $scriptDir "keys.json"
 
+# Helper: Normalizar a chave para hashtable (compatibilidade com banco antigo)
+function Get-NormalizedKey($val) {
+    if (-not $val) {
+        return @{ expiresAt = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ"); email = $null }
+    }
+    # Se for um objeto com propriedades (como JSON deserializado)
+    if ($val.PSObject -and $val.expiresAt) {
+        $email = $null
+        if ($val.email) { $email = $val.email }
+        return @{ expiresAt = $val.expiresAt; email = $email }
+    }
+    # Caso contrário, é apenas a data string
+    return @{ expiresAt = $val; email = $null }
+}
+
 # Helper: Carregar Licenças
 function Get-KeysDb {
     if (Test-Path $keysFile) {
@@ -118,6 +133,7 @@ try {
         # ROTA: Validar Licença do Cliente
         if ($rawPath -eq "/api/validate") {
             $keyParam = $request.QueryString["key"]
+            $emailParam = $request.QueryString["email"]
             if ([string]::IsNullOrEmpty($keyParam)) {
                 Send-JsonResponse $response 400 @{ error = "Parametro 'key' ausente." }
                 continue
@@ -133,22 +149,40 @@ try {
             }
             
             if ($keysHash.ContainsKey($keyParam)) {
-                $expiryDateStr = $keysHash[$keyParam]
-                $expiryDate = [DateTime]::Parse($expiryDateStr)
+                $norm = Get-NormalizedKey $keysHash[$keyParam]
+                $expiryDate = [DateTime]::Parse($norm.expiresAt)
                 $now = Get-Date
                 
-                if ($expiryDate -gt $now) {
-                    $daysLeft = [Math]::Ceiling(($expiryDate - $now).TotalDays)
-                    Send-JsonResponse $response 200 @{
-                        valid = $true
-                        expiresAt = $expiryDateStr
-                        daysLeft = $daysLeft
-                    }
-                } else {
+                if ($expiryDate -le $now) {
                     Send-JsonResponse $response 200 @{
                         valid = $false
-                        error = "A assinatura expirou em $($expiryDateStr.Split('T')[0])."
+                        error = "A assinatura expirou em $($norm.expiresAt.Split('T')[0])."
                     }
+                    continue
+                }
+                
+                # Bloqueio de Compartilhamento: Se a chave já estiver vinculada a outro e-mail
+                if ($norm.email -and [string]::IsNullOrEmpty($emailParam) -eq $false -and $norm.email.ToLower() -ne $emailParam.ToLower()) {
+                    Send-JsonResponse $response 200 @{
+                        valid = $false
+                        error = "Esta chave de licenca ja esta em uso por outro usuario."
+                    }
+                    continue
+                }
+                
+                # Vincular a chave no primeiro cadastro se o e-mail for fornecido
+                if (-not $norm.email -and [string]::IsNullOrEmpty($emailParam) -eq $false) {
+                    $norm.email = $emailParam.ToLower()
+                    $keysHash[$keyParam] = $norm
+                    Save-KeysDb $keysHash
+                    Write-Host "[Licencas] Chave $keyParam vinculada ao e-mail $emailParam" -ForegroundColor Green
+                }
+                
+                $daysLeft = [Math]::Ceiling(($expiryDate - $now).TotalDays)
+                Send-JsonResponse $response 200 @{
+                    valid = $true
+                    expiresAt = $norm.expiresAt
+                    daysLeft = $daysLeft
                 }
             } else {
                 Send-JsonResponse $response 200 @{
@@ -197,13 +231,15 @@ try {
             
             if ($db) {
                 foreach ($prop in $db.PSObject.Properties) {
-                    $expiryDate = [DateTime]::Parse($prop.Value)
+                    $norm = Get-NormalizedKey $prop.Value
+                    $expiryDate = [DateTime]::Parse($norm.expiresAt)
                     $daysLeft = [Math]::Ceiling(($expiryDate - $now).TotalDays)
                     if ($daysLeft -lt 0) { $daysLeft = 0 }
                     
                     $list += @{
                         key = $prop.Name
-                        expiresAt = $prop.Value
+                        expiresAt = $norm.expiresAt
+                        email = $norm.email
                         daysLeft = $daysLeft
                         expired = ($expiryDate -le $now)
                     }
@@ -245,7 +281,10 @@ try {
                     $newDb[$prop.Name] = $prop.Value
                 }
             }
-            $newDb[$newKey] = $expiryString
+            $newDb[$newKey] = @{
+                expiresAt = $expiryString
+                email = $null
+            }
             
             if (Save-KeysDb $newDb) {
                 Send-JsonResponse $response 200 @{ success = $true; key = $newKey; expiresAt = $expiryString }
@@ -291,7 +330,8 @@ try {
                     continue
                 }
                 
-                $currentExpiry = [DateTime]::Parse($newDb[$key])
+                $norm = Get-NormalizedKey $newDb[$key]
+                $currentExpiry = [DateTime]::Parse($norm.expiresAt)
                 $now = Get-Date
                 
                 # Definir base de cálculo (se já expirou, conta a partir de hoje)
@@ -300,7 +340,10 @@ try {
                 
                 $newExpiry = $baseDate.AddDays($days)
                 $newExpiryString = $newExpiry.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
-                $newDb[$key] = $newExpiryString
+                $newDb[$key] = @{
+                    expiresAt = $newExpiryString
+                    email = $norm.email
+                }
                 
                 if (Save-KeysDb $newDb) {
                     Send-JsonResponse $response 200 @{ success = $true; key = $key; expiresAt = $newExpiryString }
