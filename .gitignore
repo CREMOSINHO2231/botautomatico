@@ -1,0 +1,5 @@
+node_modules/
+keys.json
+chaves_de_acesso.txt
+.DS_Store
+Thumbs.db

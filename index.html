@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Painel de gerenciamento, conversão e automação de links de afiliados para bots e canais de ofertas do Telegram.">
+    <title>OfertasBot - Gerador de Links e Postador para Telegram</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Background Animated Gradients -->
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+    <div class="bg-glow bg-glow-3"></div>
+
+    <!-- Authentication Overlay (Glassmorphism) -->
+    <div class="auth-overlay" id="auth-overlay">
+        <div class="auth-card glass-card">
+            <div class="auth-header">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-lock"></i>
+                </div>
+                <h2>Ofertas<span>Bot</span></h2>
+                <p id="auth-card-subtitle">Identificação Necessária</p>
+            </div>
+            
+            <div class="auth-body">
+                <!-- SETUP FORM (First run) -->
+                <form id="auth-setup-form" class="auth-form hidden">
+                    <div class="form-instructions">
+                        <i class="fa-solid fa-shield-halved" style="color: var(--primary);"></i>
+                        <p><strong>Configuração Inicial</strong>: Cadastre seu e-mail, senha e uma Chave de Acesso (Access Key) personalizada para logar no painel.</p>
+                    </div>
+                    
+                    <div class="form-group" style="display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem;">
+                        <label for="setup-email" style="font-size: 0.85rem; font-weight: 500; color: var(--text-muted);">E-mail de Acesso</label>
+                        <input type="email" id="setup-email" placeholder="nome@exemplo.com" required autocomplete="username" style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 0.7rem; color: #fff; outline: none; font-family: inherit;">
+                    </div>
+                    
+                    <div class="form-group" style="display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem;">
+                        <label for="setup-password" style="font-size: 0.85rem; font-weight: 500; color: var(--text-muted);">Senha de Acesso</label>
+                        <input type="password" id="setup-password" placeholder="Crie sua senha do painel" required autocomplete="new-password" style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 0.7rem; color: #fff; outline: none; font-family: inherit;">
+                    </div>
+
+                    <div class="form-group" style="display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1.5rem;">
+                        <label for="setup-key" style="font-size: 0.85rem; font-weight: 500; color: var(--text-muted);">Chave de Acesso (Access Key)</label>
+                        <input type="text" id="setup-key" placeholder="Crie uma chave (ex: bot123)" required style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 0.7rem; color: #fff; outline: none; font-family: inherit;">
+                    </div>
+
+                    <button type="submit" class="btn-primary auth-submit-btn" id="btn-setup-submit" style="width: 100%; display: flex; justify-content: center; align-items: center; gap: 8px;">
+                        <span>Concluir Cadastro</span>
+                        <i class="fa-solid fa-circle-check"></i>
+                    </button>
+                </form>
+
+                <!-- LOGIN FORM -->
+                <form id="auth-login-form" class="auth-form">
+                    <div class="form-group" style="display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem;">
+                        <label for="login-email" style="font-size: 0.85rem; font-weight: 500; color: var(--text-muted);">E-mail</label>
+                        <div class="input-wrapper" style="position: relative;">
+                            <i class="fa-solid fa-envelope input-icon" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: rgba(255,255,255,0.4); font-size: 0.95rem;"></i>
+                            <input type="email" id="login-email" placeholder="seu-email@dominio.com" required autocomplete="username" style="width: 100%; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 0.7rem 0.7rem 0.7rem 2.4rem; color: #fff; outline: none; font-family: inherit; box-sizing: border-box;">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group" style="display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem;">
+                        <label for="login-password" style="font-size: 0.85rem; font-weight: 500; color: var(--text-muted);">Senha</label>
+                        <div class="input-wrapper" style="position: relative;">
+                            <i class="fa-solid fa-lock input-icon" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: rgba(255,255,255,0.4); font-size: 0.95rem;"></i>
+                            <input type="password" id="login-password" placeholder="Sua senha de acesso" required autocomplete="current-password" style="width: 100%; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 0.7rem 0.7rem 0.7rem 2.4rem; color: #fff; outline: none; font-family: inherit; box-sizing: border-box;">
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1.5rem;">
+                        <label for="login-key" style="font-size: 0.85rem; font-weight: 500; color: var(--text-muted);">Chave de Acesso (Access Key)</label>
+                        <div class="input-wrapper" style="position: relative;">
+                            <i class="fa-solid fa-key input-icon" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: rgba(255,255,255,0.4); font-size: 0.95rem;"></i>
+                            <input type="text" id="login-key" placeholder="Digite sua Chave de Acesso" required style="width: 100%; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 0.7rem 0.7rem 0.7rem 2.4rem; color: #fff; outline: none; font-family: inherit; box-sizing: border-box;">
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn-primary auth-submit-btn" id="btn-login-submit" style="width: 100%; display: flex; justify-content: center; align-items: center; gap: 8px;">
+                        <span>Entrar</span>
+                        <i class="fa-solid fa-right-to-bracket"></i>
+                    </button>
+                </form>
+
+                <!-- LICENSE EXPIRED VIEW -->
+                <div id="auth-license-expired" class="auth-form hidden">
+                    <div class="form-instructions" style="background: rgba(239, 68, 68, 0.1); border-left: 3px solid #ef4444; border-radius: 4px; padding: 0.8rem; display: flex; gap: 0.8rem; align-items: flex-start; margin-bottom: 1.5rem; text-align: left;">
+                        <i class="fa-solid fa-triangle-exclamation" style="color: #ef4444; font-size: 1.2rem; margin-top: 2px;"></i>
+                        <div>
+                            <strong style="color: #ef4444; display: block; margin-bottom: 0.2rem;">Licença Expirada / Bloqueada</strong>
+                            <p id="license-expired-text" style="font-size: 0.85rem; color: rgba(255,255,255,0.8); line-height: 1.4; margin: 0;"></p>
+                        </div>
+                    </div>
+                    <div style="text-align: center; color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem; line-height: 1.5;">
+                        Para reativar seu acesso ao painel do bot, por favor entre em contato com o suporte para renovar sua assinatura.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="app-container">
+        <!-- HEADER -->
+        <header class="app-header">
+            <div class="brand">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-fire-flame-curved"></i>
+                </div>
+                <div class="logo-text">
+                    <h1>Ofertas<span>Bot</span></h1>
+                    <p>Gerador de Afiliados & Telegram</p>
+                </div>
+            </div>
+            
+            <div class="header-status">
+                <div class="status-indicator" id="telegram-status">
+                    <span class="status-dot offline"></span>
+                    <span class="status-label">Telegram Offline</span>
+                </div>
+                <div class="status-indicator" id="config-status">
+                    <span class="status-dot offline"></span>
+                    <span class="status-label">Configuração Incompleta</span>
+                </div>
+                <button type="button" class="btn-logout" id="btn-logout" title="Sair do Painel">
+                    <i class="fa-solid fa-right-from-bracket"></i> Sair
+                </button>
+            </div>
+        </header>
+
+        <!-- MAIN CONTENT AREA -->
+        <main class="app-main">
+            <!-- COLUMN 1: CONTROL PANEL -->
+            <section class="control-panel glass-card">
+                <!-- Navigation Tabs -->
+                <nav class="tabs-nav" aria-label="Navegação do painel">
+                    <button class="tab-btn active" data-tab="tab-converter" id="btn-tab-converter">
+                        <i class="fa-solid fa-link"></i> Conversor
+                    </button>
+                    <button class="tab-btn" data-tab="tab-automation" id="btn-tab-automation">
+                        <i class="fa-solid fa-robot"></i> Automação
+                    </button>
+                    <button class="tab-btn" data-tab="tab-templates" id="btn-tab-templates">
+                        <i class="fa-solid fa-file-invoice"></i> Modelos
+                    </button>
+                    <button class="tab-btn" data-tab="tab-instagram" id="btn-tab-instagram">
+                        <i class="fa-brands fa-instagram"></i> Instagram Reels
+                    </button>
+                    <button class="tab-btn" data-tab="tab-config" id="btn-tab-config">
+                        <i class="fa-solid fa-sliders"></i> Configurações
+                    </button>
+                    <button class="tab-btn" data-tab="tab-history" id="btn-tab-history">
+                        <i class="fa-solid fa-clock-rotate-left"></i> Histórico
+                    </button>
+                </nav>
+
+                <!-- TAB CONTENT CONTENT -->
+                <div class="tabs-content">
+                    
+                    <!-- TAB 1: CONVERTER -->
+                    <div class="tab-panel active" id="tab-converter" role="tabpanel">
+                        <div class="section-title">
+                            <h2>Converter Novo Link</h2>
+                            <p>Cole o link original de qualquer produto da Amazon, Mercado Livre, Shopee ou AliExpress.</p>
+                        </div>
+
+                        <!-- Link Import Area -->
+                        <div class="input-group-glow">
+                            <div class="input-wrapper">
+                                <i class="fa-solid fa-magnifying-glass input-icon"></i>
+                                <input type="url" id="raw-url" placeholder="https://www.amazon.com.br/dp/B0..." autocomplete="off">
+                                <button type="button" class="btn-primary" id="btn-fetch-link">
+                                    <span>Buscar & Converter</span>
+                                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Progress Bar / Spinner for loading state -->
+                        <div class="loader-container" id="scraper-loader">
+                            <div class="spinner"></div>
+                            <p id="loader-text">Analisando o link do produto...</p>
+                        </div>
+
+                        <!-- Manual/Scraped product data form -->
+                        <div class="product-edit-form" id="product-form">
+                            <div class="form-grid">
+                                <div class="form-group col-span-2">
+                                    <label for="prod-title">Título do Produto</label>
+                                    <input type="text" id="prod-title" placeholder="Ex: Smartphone Galaxy S24 Ultra 512GB">
+                                </div>
+                                <div class="form-group">
+                                    <label for="prod-price-old">Preço Original (R$)</label>
+                                    <input type="text" id="prod-price-old" placeholder="Ex: 5.999,00">
+                                </div>
+                                <div class="form-group">
+                                    <label for="prod-price-new">Preço com Desconto (R$)</label>
+                                    <input type="text" id="prod-price-new" placeholder="Ex: 4.899,00">
+                                </div>
+                                <div class="form-group col-span-2">
+                                    <label for="prod-coupon">Cupom de Desconto (Opcional)</label>
+                                    <input type="text" id="prod-coupon" placeholder="Ex: VALE100">
+                                </div>
+                                <div class="form-group col-span-2">
+                                    <label for="prod-image">URL da Imagem do Produto</label>
+                                    <div class="image-input-wrapper">
+                                        <input type="url" id="prod-image" placeholder="https://m.media-amazon.com/images/I/...">
+                                        <button type="button" class="btn-secondary" id="btn-verify-image" title="Pré-visualizar imagem">
+                                            <i class="fa-solid fa-eye"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="form-group col-span-2">
+                                    <label for="prod-aff-url">Link de Afiliado Gerado</label>
+                                    <div class="aff-url-wrapper">
+                                        <input type="url" id="prod-aff-url" readonly placeholder="O link convertido aparecerá aqui...">
+                                        <button type="button" class="btn-copy" id="btn-copy-url" title="Copiar link">
+                                            <i class="fa-solid fa-copy"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Post template Editor -->
+                            <div class="message-editor-wrapper">
+                                <label for="message-content">Conteúdo da Mensagem do Telegram</label>
+                                <textarea id="message-content" rows="8" placeholder="Escreva sua mensagem..."></textarea>
+                                <div class="editor-info-bar">
+                                    <span>Marcações HTML: &lt;b&gt;negrito&lt;/b&gt;, &lt;s&gt;riscado&lt;/s&gt;, &lt;i&gt;itálico&lt;/i&gt;</span>
+                                    <span id="char-counter">0 caracteres</span>
+                                </div>
+                            </div>
+
+                            <!-- Action Buttons -->
+                            <div class="action-footer">
+                                <button type="button" class="btn-secondary-large" id="btn-copy-full-text">
+                                    <i class="fa-solid fa-copy"></i> Copiar Post
+                                </button>
+                                <button type="button" class="btn-facebook-large" id="btn-post-facebook">
+                                    <span>Postar no Facebook</span>
+                                    <i class="fa-brands fa-facebook"></i>
+                                </button>
+                                <button type="button" class="btn-success-large" id="btn-post-telegram">
+                                    <span>Postar no Telegram</span>
+                                    <i class="fa-solid fa-paper-plane"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 2: AUTOMATION -->
+                    <div class="tab-panel" id="tab-automation" role="tabpanel">
+                        <div class="section-title">
+                            <h2>Autopostagem Automática (Browser Autopost)</h2>
+                            <p>O robô buscará novas ofertas em agregadores nacionais e as postará diretamente no seu canal. <strong>Mantenha esta aba aberta</strong> para a automação continuar rodando.</p>
+                        </div>
+
+                        <div class="automation-control-grid">
+                            <div class="glass-card-nested col-span-2" style="margin-bottom:1.5rem;">
+                                <div class="automation-status-bar">
+                                    <div class="status-info">
+                                        <span class="status-indicator-badge" id="auto-badge-status">
+                                            <span class="status-dot offline" id="auto-dot"></span>
+                                            <span id="auto-txt-status">Autopost Desativado</span>
+                                        </span>
+                                    </div>
+                                    <button type="button" class="btn-primary" id="btn-toggle-automation">
+                                        <span>Iniciar Autopost</span>
+                                        <i class="fa-solid fa-play"></i>
+                                    </button>
+                                </div>
+
+                                <div class="form-grid" style="margin-top: 1.5rem;">
+                                    <div class="form-group">
+                                        <label for="cfg-auto-interval">Frequência de Varredura</label>
+                                        <select id="cfg-auto-interval">
+                                            <option value="1">A cada 1 minuto (Apenas Testes)</option>
+                                            <option value="5">A cada 5 minutos</option>
+                                            <option value="10" selected>A cada 10 minutos</option>
+                                            <option value="15">A cada 15 minutos</option>
+                                            <option value="30">A cada 30 minutos</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="cfg-auto-category">Foco de Categoria (Promobit)</label>
+                                        <select id="cfg-auto-category">
+                                            <option value="all" selected>Todas as Promoções (Padrão)</option>
+                                            <option value="informatica">Informática & Hardware (PC)</option>
+                                            <option value="games">Games e Consoles</option>
+                                            <option value="smartphones">Celulares & Smartphones</option>
+                                            <option value="automotivo">Carros & Motos (Automotivo)</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Fontes de Ofertas (Feeds)</label>
+                                        <div class="checkbox-group">
+                                            <label class="checkbox-label" style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;">
+                                                <input type="checkbox" id="chk-src-promobit" checked> Promobit RSS Feed
+                                            </label>
+                                            <label class="checkbox-label" style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; margin-top:0.4rem;">
+                                                <input type="checkbox" id="chk-src-gatry" checked> Gatry RSS Feed
+                                            </label>
+                                            <label class="checkbox-label" style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; margin-top:0.4rem; color: #ff007f;">
+                                                <input type="checkbox" id="chk-auto-instagram"> <i class="fa-brands fa-instagram"></i> Postar no Instagram Reels
+                                            </label>
+                                            <label class="checkbox-label" style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; margin-top:0.4rem; color: #1877f2;">
+                                                <input type="checkbox" id="chk-auto-facebook"> <i class="fa-brands fa-facebook"></i> Postar no Facebook Page
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="form-group col-span-2">
+                                        <label>Lojas Permitidas para Autopostagem</label>
+                                        <div class="checkbox-group" style="display: flex; gap: 1.25rem; flex-wrap: wrap;">
+                                            <label class="checkbox-label" style="display:flex; align-items:center; gap:0.4rem; cursor:pointer; font-size:0.85rem;">
+                                                <input type="checkbox" id="chk-store-amazon" checked> Amazon
+                                            </label>
+                                            <label class="checkbox-label" style="display:flex; align-items:center; gap:0.4rem; cursor:pointer; font-size:0.85rem;">
+                                                <input type="checkbox" id="chk-store-mercadolivre" checked> Mercado Livre
+                                            </label>
+                                            <label class="checkbox-label" style="display:flex; align-items:center; gap:0.4rem; cursor:pointer; font-size:0.85rem;">
+                                                <input type="checkbox" id="chk-store-shopee" checked> Shopee
+                                            </label>
+                                            <label class="checkbox-label" style="display:flex; align-items:center; gap:0.4rem; cursor:pointer; font-size:0.85rem;">
+                                                <input type="checkbox" id="chk-store-aliexpress" checked> AliExpress
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="form-group col-span-2">
+                                        <label for="cfg-auto-blacklist">Palavras Bloqueadas (Separadas por vírgula)</label>
+                                        <input type="text" id="cfg-auto-blacklist" placeholder="Ex: cupom, frete grátis, usado, reembalado, assinatura">
+                                        <span class="input-help">O bot pulará ofertas cujo título contenha qualquer uma destas palavras.</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Logs Console -->
+                            <div class="form-group col-span-2">
+                                <label style="display:flex; justify-content:space-between; align-items:center;">
+                                    <span>Console de Operações (Tempo Real)</span>
+                                    <button type="button" class="btn-clear-logs" id="btn-clear-logs" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:0.75rem;"><i class="fa-solid fa-eraser"></i> Limpar Console</button>
+                                </label>
+                                <div class="console-logs" id="console-logs-area">
+                                    <div class="log-line text-muted">[sistema] Painel carregado. Aguardando inicialização da automação...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 3: TEMPLATES -->
+                    <div class="tab-panel" id="tab-templates" role="tabpanel">
+                        <div class="section-title">
+                            <h2>Modelos de Mensagem</h2>
+                            <p>Personalize a estrutura padrão dos seus posts. As variáveis serão preenchidas automaticamente ao converter um link.</p>
+                        </div>
+
+                        <div class="template-selector-container">
+                            <div class="form-group">
+                                <label for="active-template">Modelo Ativo</label>
+                                <textarea id="active-template" rows="12" class="code-font"></textarea>
+                            </div>
+
+                            <div class="template-tags-guide">
+                                <h3>Variáveis Disponíveis</h3>
+                                <div class="tag-badges">
+                                    <span class="tag-badge" data-tag="{title}"><strong>{title}</strong> - Título do produto</span>
+                                    <span class="tag-badge" data-tag="{oldPrice}"><strong>{oldPrice}</strong> - Preço anterior</span>
+                                    <span class="tag-badge" data-tag="{price}"><strong>{price}</strong> - Preço com desconto</span>
+                                    <span class="tag-badge" data-tag="{link}"><strong>{link}</strong> - Seu link de afiliado</span>
+                                    <span class="tag-badge" data-tag="{discount}"><strong>{discount}</strong> - % de desconto</span>
+                                    <span class="tag-badge" data-tag="{coupon}"><strong>{coupon}</strong> - Cupom de desconto</span>
+                                </div>
+                            </div>
+
+                            <div class="action-footer">
+                                <button type="button" class="btn-secondary" id="btn-reset-template">Restaurar Padrão</button>
+                                <button type="button" class="btn-primary" id="btn-save-template">Salvar Modelo</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 6: INSTAGRAM REELS -->
+                    <div class="tab-panel" id="tab-instagram" role="tabpanel">
+                        <div class="section-title">
+                            <h2>Instagram Reels AI Creator & Poster</h2>
+                            <p>Crie pequenos vídeos dinâmicos de ofertas para postar no Instagram Reels/Stories e direcionar pessoas para o link na sua bio.</p>
+                        </div>
+
+                        <div class="instagram-layout">
+                            <!-- Left: Controls and Settings -->
+                            <div class="ig-controls-column">
+                                <div class="glass-card-nested" style="margin-bottom: 1.5rem;">
+                                    <h3><i class="fa-solid fa-video"></i> Gerador de Reels</h3>
+                                    
+                                    <div class="form-grid">
+                                        <div class="form-group col-span-2">
+                                            <label for="ig-video-text">Texto Superior (Chamada de Impacto)</label>
+                                            <input type="text" id="ig-video-text" value="SUPER OFERTA!">
+                                        </div>
+                                        <div class="form-group col-span-2">
+                                            <label for="ig-video-cta">Texto Inferior (Ação)</label>
+                                            <input type="text" id="ig-video-cta" value="LINK NO GRUPO NA BIO! 👆">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="ig-video-theme">Tema de Cores</label>
+                                            <select id="ig-video-theme">
+                                                <option value="instagram" selected>Gradiente Instagram (Neon Pink/Purple)</option>
+                                                <option value="dark">Modo Dark Absoluto (Gold/Dark)</option>
+                                                <option value="fire">Fogo & Calor (Orange/Red)</option>
+                                                <option value="cyber">Cyberpunk (Cyan/Magenta)</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="ig-video-duration">Duração do Vídeo</label>
+                                            <select id="ig-video-duration">
+                                                <option value="5">5 Segundos</option>
+                                                <option value="15">15 Segundos</option>
+                                                <option value="30" selected>30 Segundos (Recomendado)</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="ig-post-type">Tipo de Publicação</label>
+                                            <select id="ig-post-type">
+                                                <option value="reels" selected>Instagram Reels (Feed + Reels)</option>
+                                                <option value="stories">Instagram Stories</option>
+                                                <option value="both">Ambos (Reels + Stories)</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group col-span-2" style="margin-top: 0.5rem;">
+                                            <label class="checkbox-label" style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; font-size:0.85rem;">
+                                                <input type="checkbox" id="ig-sim-sponsored"> <i class="fa-solid fa-rectangle-ad" style="color:var(--primary);"></i> Anunciar como Empresa (Tag "Patrocinado" no Vídeo & Stories)
+                                            </label>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="action-footer" style="margin-top: 1.25rem; justify-content: flex-start; gap: 0.75rem;">
+                                        <button type="button" class="btn-primary" id="btn-ig-generate">
+                                            <span>Gerar Vídeo</span> <i class="fa-solid fa-sync"></i>
+                                        </button>
+                                        <button type="button" class="btn-success" id="btn-ig-download" disabled>
+                                            <span>Baixar Vídeo</span> <i class="fa-solid fa-download"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="glass-card-nested" style="margin-bottom: 1.5rem;">
+                                    <h3><i class="fa-solid fa-pen-nib"></i> Legenda do Reels</h3>
+                                    <div class="message-editor-wrapper" style="margin-top: 0;">
+                                        <textarea id="ig-caption-text" rows="5" placeholder="Legenda do Reels aparecerá aqui..."></textarea>
+                                        <div class="editor-info-bar">
+                                            <button type="button" class="btn-secondary" id="btn-ig-copy-caption" style="padding: 0.35rem 0.65rem; font-size: 0.75rem; border-radius: 6px;">
+                                                <i class="fa-solid fa-copy"></i> Copiar Legenda
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="glass-card-nested">
+                                    <h3><i class="fa-brands fa-instagram"></i> Configuração de Publicação Automática</h3>
+                                    <div class="form-grid">
+                                        <div class="form-group col-span-2">
+                                            <label for="cfg-ig-token">Token de Acesso do Instagram (Facebook Graph)</label>
+                                            <input type="password" id="cfg-ig-token" placeholder="EAAW...">
+                                        </div>
+                                        <div class="form-group col-span-2">
+                                            <label for="cfg-ig-business-id">Instagram Business Account ID</label>
+                                            <input type="text" id="cfg-ig-business-id" placeholder="1784140...">
+                                        </div>
+                                    </div>
+                                    <div class="action-footer" style="margin-top: 1.25rem; justify-content: flex-start;">
+                                        <button type="button" class="btn-primary" id="btn-ig-publish" disabled>
+                                            <span>Publicar Reels Manual</span> <i class="fa-solid fa-paper-plane"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Right: Mobile Simulator -->
+                            <div class="ig-preview-column">
+                                <div class="instagram-simulator-frame">
+                                    <div class="simulator-header">
+                                        <span class="camera-lens"></span>
+                                        <span class="speaker-grill"></span>
+                                    </div>
+                                    <div class="simulator-screen">
+                                        <!-- Video Render Preview Target -->
+                                        <div class="reels-player-wrapper">
+                                            <video id="reels-video-preview" loop muted playsinline autoplay style="display: none; width: 100%; height: 100%; object-fit: cover;"></video>
+                                            <canvas id="reels-canvas-preview" style="width: 100%; height: 100%; object-fit: cover; background: #000;"></canvas>
+                                            
+                                            <!-- Reels Overlays Simulator -->
+                                            <div class="reels-overlays">
+                                                <div class="reels-left-details">
+                                                    <div class="reels-profile">
+                                                        <div class="profile-pic"><i class="fa-solid fa-user"></i></div>
+                                                        <div class="profile-meta-wrapper" style="display:flex; flex-direction:column;">
+                                                            <div class="profile-name-line" style="display:flex; align-items:center; gap:0.4rem;">
+                                                                <span class="profile-name">seu_canal_ofertas</span>
+                                                                <span class="follow-btn" id="simulator-follow-btn">Seguir</span>
+                                                            </div>
+                                                            <span class="profile-ad-badge" id="simulator-ad-badge" style="display: none; font-size: 0.65rem; color: rgba(255,255,255,0.7); font-weight: normal; margin-top: 1px;">Patrocinado</span>
+                                                        </div>
+                                                    </div>
+                                                    <div class="reels-caption-preview">
+                                                        <span id="simulator-caption-txt">🔥 Oferta imperdível! Veja o link no grupo da bio...</span>
+                                                    </div>
+                                                    <div class="reels-audio" id="simulator-audio-badge">
+                                                        <i class="fa-solid fa-music"></i>
+                                                        <span class="marquee-text">Áudio Original • ofertasbot</span>
+                                                    </div>
+                                                </div>
+                                                <div class="reels-right-actions" id="simulator-right-actions">
+                                                    <div class="reel-action"><i class="fa-solid fa-heart"></i><span>943</span></div>
+                                                    <div class="reel-action"><i class="fa-solid fa-comment"></i><span>12</span></div>
+                                                    <div class="reel-action"><i class="fa-solid fa-paper-plane"></i></div>
+                                                    <div class="reel-action"><i class="fa-solid fa-ellipsis-vertical"></i></div>
+                                                    <div class="reel-action-music"><i class="fa-solid fa-disc"></i></div>
+                                                </div>
+                                            </div>
+                                            <!-- Swipe up banner for Stories / Ads -->
+                                            <div class="reels-swipe-up" id="simulator-swipe-up" style="display: none; position: absolute; bottom: 0.85rem; left: 0; width: 100%; flex-direction: column; align-items: center; gap: 0.15rem; color: #fff; z-index: 7; cursor: pointer; text-shadow: 1px 1px 2px rgba(0,0,0,0.8);">
+                                                <i class="fa-solid fa-chevron-up" style="font-size: 0.8rem; animation: bounceUp 1.2s infinite ease-in-out;"></i>
+                                                <span style="font-size: 0.75rem; font-weight: 600; background: rgba(0,0,0,0.4); padding: 0.25rem 0.75rem; border-radius: 20px; border: 1px solid rgba(255,255,255,0.25);">Saiba Mais</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="simulator-footer">
+                                        <span class="home-indicator"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 4: CONFIGURATIONS -->
+                    <div class="tab-panel" id="tab-config" role="tabpanel">
+                        <div class="section-title">
+                            <h2>Configurações do Sistema</h2>
+                            <p>Configure seus tokens do Telegram e identificadores de afiliado para automatizar os posts.</p>
+                        </div>
+
+                        <form id="config-form">
+                            <!-- Telegram Configuration Group -->
+                            <div class="config-group glass-card-nested">
+                                <h3><i class="fa-brands fa-telegram"></i> API do Telegram</h3>
+                                <div class="form-grid">
+                                    <div class="form-group col-span-2">
+                                        <label for="cfg-tg-token">Token do Bot Telegram</label>
+                                        <input type="password" id="cfg-tg-token" placeholder="1234567890:ABCdefGhIJKlmNoPQRsTUVwxyZ">
+                                        <span class="input-help">Crie seu bot no Telegram falando com o <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer">@BotFather</a>.</span>
+                                    </div>
+                                    <div class="form-group col-span-2">
+                                        <label for="cfg-tg-chat-id">ID ou Username do Canal/Grupo</label>
+                                        <input type="text" id="cfg-tg-chat-id" placeholder="Ex: @meucanal ou -1001234567890">
+                                        <span class="input-help">O bot deve estar adicionado como administrador no grupo/canal de destino.</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Facebook Configuration Group -->
+                            <div class="config-group glass-card-nested" style="margin-bottom: 1.5rem;">
+                                <h3><i class="fa-brands fa-facebook" style="color: #1877f2;"></i> API do Facebook Pages</h3>
+                                <div class="form-grid">
+                                    <div class="form-group col-span-2">
+                                        <label for="cfg-fb-token">Token de Acesso da Página do Facebook</label>
+                                        <input type="password" id="cfg-fb-token" placeholder="EAAW...">
+                                        <span class="input-help">Use um Token de Acesso de Página de longa duração gerado no Portal de Desenvolvedores do Meta.</span>
+                                    </div>
+                                    <div class="form-group col-span-2">
+                                        <label for="cfg-fb-page-id">ID da Página do Facebook</label>
+                                        <input type="text" id="cfg-fb-page-id" placeholder="Ex: 102938475610293">
+                                        <span class="input-help">O ID numérico da sua Página do Facebook onde as ofertas serão postadas.</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Affiliate Identifiers -->
+                            <div class="config-group glass-card-nested">
+                                <h3><i class="fa-solid fa-tags"></i> Credenciais de Afiliados</h3>
+                                <div class="form-grid">
+                                    <!-- Amazon -->
+                                    <div class="form-group">
+                                        <label for="cfg-amz-tag">Amazon Associate Tag</label>
+                                        <input type="text" id="cfg-amz-tag" placeholder="Ex: meuid-20">
+                                    </div>
+                                    <!-- Mercado Livre -->
+                                    <div class="form-group">
+                                        <label for="cfg-ml-campaign">Mercado Livre Campanha</label>
+                                        <input type="text" id="cfg-ml-campaign" placeholder="Ex: meucanalml">
+                                    </div>
+                                    <!-- Shopee AppKey -->
+                                    <div class="form-group">
+                                        <label for="cfg-shopee-key">Shopee App Key (Opcional)</label>
+                                        <input type="text" id="cfg-shopee-key" placeholder="Para API Oficial da Shopee">
+                                    </div>
+                                    <!-- Shopee AppSecret -->
+                                    <div class="form-group">
+                                        <label for="cfg-shopee-secret">Shopee App Secret (Opcional)</label>
+                                        <input type="password" id="cfg-shopee-secret" placeholder="Para API Oficial da Shopee">
+                                    </div>
+                                    <!-- Shopee Manual Redirection -->
+                                    <div class="form-group col-span-2">
+                                        <label for="cfg-shopee-fallback">Shopee ID de Redirecionamento de Afiliado (Alternativo)</label>
+                                        <input type="text" id="cfg-shopee-fallback" placeholder="Ex: sub_id ou link da Lomadee">
+                                        <span class="input-help">Se não tiver chaves API oficiais da Shopee, use Lomadee ou cole o link manualmente.</span>
+                                    </div>
+                                    <!-- AliExpress -->
+                                    <div class="form-group col-span-2">
+                                        <label for="cfg-ali-id">AliExpress Tracking ID / Admitad URL</label>
+                                        <input type="text" id="cfg-ali-id" placeholder="Ex: seu_tracking_id ou link completo Admitad">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="action-footer">
+                                <button type="button" class="btn-secondary" id="btn-test-telegram-connection">
+                                    <i class="fa-solid fa-vcheck"></i> Testar Bot
+                                </button>
+                                <button type="submit" class="btn-primary">
+                                    <span>Salvar Configurações</span>
+                                    <i class="fa-solid fa-save"></i>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- TAB 5: HISTORY -->
+                    <div class="tab-panel" id="tab-history" role="tabpanel">
+                        <div class="section-title">
+                            <h2>Histórico de Ofertas Postadas</h2>
+                            <p>Lista dos últimos posts enviados para o Telegram. Você pode reutilizá-los ou conferir o link da postagem.</p>
+                        </div>
+
+                        <div class="history-controls">
+                            <button type="button" class="btn-secondary" id="btn-clear-history">
+                                <i class="fa-solid fa-trash-can"></i> Limpar Histórico
+                            </button>
+                        </div>
+
+                        <div class="history-list-wrapper">
+                            <table class="history-table" id="history-table">
+                                <thead>
+                                    <tr>
+                                        <th>Produto</th>
+                                        <th>Marketplace</th>
+                                        <th>Preço</th>
+                                        <th>Data / Hora</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="history-tbody">
+                                    <!-- Dynamic Rows -->
+                                    <tr class="empty-row">
+                                        <td colspan="5">Nenhuma oferta enviada ainda. Suas ofertas aparecerão aqui após postar!</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+            <!-- COLUMN 2: TELEGRAM LIVE SIMULATOR -->
+            <section class="telegram-preview-panel glass-card">
+                <div class="tg-preview-header">
+                    <i class="fa-brands fa-telegram tg-logo"></i>
+                    <div class="tg-chat-info">
+                        <h3 id="preview-chat-title">Grupo de Ofertas</h3>
+                        <p>simulação de prévia do canal</p>
+                    </div>
+                    <div class="tg-actions-icons">
+                        <i class="fa-solid fa-search"></i>
+                        <i class="fa-solid fa-ellipsis-vertical"></i>
+                    </div>
+                </div>
+
+                <div class="tg-preview-body">
+                    <div class="tg-message-container">
+                        <!-- Channel Message Balloon -->
+                        <div class="tg-message">
+                            <!-- Image container inside bubble -->
+                            <div class="tg-message-image-container" id="preview-img-container">
+                                <img src="https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=600&auto=format&fit=crop" id="preview-image" alt="Imagem do produto de oferta">
+                                <div class="tg-image-placeholder" id="preview-image-placeholder">
+                                    <i class="fa-solid fa-camera"></i>
+                                    <p>Nenhuma imagem</p>
+                                </div>
+                            </div>
+                            
+                            <!-- Message content (rendered HTML) -->
+                            <div class="tg-message-text" id="preview-text">
+                                🔥 <strong>Smartphone Novo Modelo</strong><br><br>
+                                💵 De: <del>R$ 1.999,00</del><br>
+                                🤑 Por apenas: <strong>R$ 1.499,00</strong><br><br>
+                                🛒 Compre aqui: <a href="#" onclick="event.preventDefault();">https://amzn.to/link-afiliado</a>
+                            </div>
+
+                            <!-- Telegram Inline Button -->
+                            <div class="tg-message-inline-btn" id="preview-btn-wrap">
+                                <a href="#" target="_blank" class="tg-inline-button" id="preview-action-btn">
+                                    <i class="fa-solid fa-cart-shopping"></i> COMPRAR AGORA
+                                </a>
+                            </div>
+
+                            <!-- Footer metadata -->
+                            <div class="tg-message-footer">
+                                <span class="tg-views"><i class="fa-solid fa-eye"></i> 1</span>
+                                <span class="tg-time" id="preview-time">12:00</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Notification Toast System -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- App Script -->
+    <script src="app.js"></script>
+</body>
+</html>
