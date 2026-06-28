@@ -14,7 +14,7 @@ app.use(express.static(__dirname));
 
 // CONFIGURAÇÃO DO SISTEMA DE ASSINATURA/LICENÇAS
 // IMPORTANTE: Altere esta URL para a URL pública do seu servidor central de licenças (ex: no Render/VPS)
-const LICENSE_URL = 'http://localhost:8200';
+const LICENSE_URL = 'https://lovely-energy-production-78fe.up.railway.app';
 
 let lastLicenseCheck = 0;
 let isLicenseValidCached = false;
@@ -86,7 +86,9 @@ async function requireLicense(req, res, next) {
 // Estado global de sessões em memória
 const sessions = new Map(); // token -> expiration timestamp
 
-const configFile = path.join(__dirname, 'config.json');
+// Caminho do arquivo de configuração (no Railway usa o volume /app/data se existir)
+const configDir = fs.existsSync('/app/data') ? '/app/data' : __dirname;
+const configFile = path.join(configDir, 'config.json');
 
 // Helper: SHA-256 Hash
 function getSha256Hash(string) {

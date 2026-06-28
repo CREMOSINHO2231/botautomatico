@@ -8,7 +8,10 @@ $global:Sessions = @{} # token -> expiration time (DateTime)
 # Obter o diretorio atual do script
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $scriptDir) { $scriptDir = Get-Location }
-$configFile = Join-Path $scriptDir "config.json"
+# Caminho do arquivo de configuração (no Railway usa o volume /app/data se existir)
+$configDir = $scriptDir
+if (Test-Path "/app/data") { $configDir = "/app/data" }
+$configFile = Join-Path $configDir "config.json"
 
 # Helper: Hash SHA-256 para salvar senhas e chaves de acesso de forma segura
 function Get-Sha256Hash($string) {
@@ -47,7 +50,7 @@ function Save-AppConfig($config) {
 
 # CONFIGURAÇÃO DO SISTEMA DE ASSINATURA/LICENÇAS
 # IMPORTANTE: Altere esta URL para a URL pública do seu servidor central de licenças (ex: no Render/VPS)
-$global:LicenseUrl = "http://localhost:8200"
+$global:LicenseUrl = "https://lovely-energy-production-78fe.up.railway.app"
 $global:LastLicenseCheck = [DateTime]::MinValue
 $global:IsLicenseValidCached = $false
 $global:LicenseErrorCached = ""
