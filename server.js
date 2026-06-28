@@ -265,13 +265,13 @@ app.post('/api/auth/update-license', async (req, res) => {
     }
     
     // Carregar configuração atual e atualizar a chave
-    const config = getAppConfig() || { admin: {} };
-    if (!config.admin) config.admin = {};
+    const currentConfig = config || { admin: {} };
+    if (!currentConfig.admin) currentConfig.admin = {};
     
-    config.admin.accessKey = key;
-    config.admin.accessKeyHash = getSha256Hash(key);
+    currentConfig.admin.accessKey = key;
+    currentConfig.admin.accessKeyHash = getSha256Hash(key);
     
-    if (saveAppConfig(config)) {
+    if (saveAppConfig(currentConfig)) {
         res.json({ success: true });
     } else {
         res.status(500).json({ error: "Falha ao salvar a nova chave no servidor." });
