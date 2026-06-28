@@ -16,9 +16,8 @@ app.use(express.static(__dirname));
 // IMPORTANTE: Altere esta URL para a URL pública do seu servidor central de licenças (ex: no Render/VPS)
 const LICENSE_URL = 'https://lovely-energy-production-78fe.up.railway.app';
 
-let lastLicenseCheck = 0;
-let isLicenseValidCached = false;
-let licenseErrorCached = '';
+// Cache de validação de licenças (key -> { valid, error, timestamp })
+const licenseCache = new Map();
 
 // Helper: Validar Licença Online
 async function checkLicenseStatus(key) {
@@ -33,10 +32,14 @@ async function checkLicenseStatus(key) {
     }
     
     const now = Date.now();
-    // Cache de 10 minutos para não sobrecarregar as requisições
-    if (now - lastLicenseCheck < 10 * 60 * 1000) {
-        return { valid: isLicenseValidCached, error: licenseErrorCached };
+    // Verificar cache específico desta chave
+    const cached = licenseCache.get(key);
+    if (cached && (now - cached.timestamp < 10 * 60 * 1000)) {
+        return { valid: cached.valid, error: cached.error };
     }
+    
+    let isLicenseValid = false;
+    let licenseError = "";
     
     try {
         console.log(`[Licença] Validando chave ${key} na API de licenças...`);
@@ -46,24 +49,30 @@ async function checkLicenseStatus(key) {
         
         if (data && typeof data === 'object') {
             if (data.valid) {
-                isLicenseValidCached = true;
-                licenseErrorCached = "";
+                isLicenseValid = true;
+                licenseError = "";
             } else {
-                isLicenseValidCached = false;
-                licenseErrorCached = data.error || "Licença inativa ou inválida.";
+                isLicenseValid = false;
+                licenseError = data.error || "Licença inativa ou inválida.";
             }
         } else {
-            isLicenseValidCached = false;
-            licenseErrorCached = "Formato de resposta inválido do servidor de licenças.";
+            isLicenseValid = false;
+            licenseError = "Formato de resposta inválido do servidor de licenças.";
         }
     } catch (err) {
         console.error("[Licença] Erro ao conectar ao servidor de licenças:", err.message);
-        isLicenseValidCached = false;
-        licenseErrorCached = `Não foi possível validar sua licença (Erro de Conexão).`;
+        isLicenseValid = false;
+        licenseError = `Não foi possível validar sua licença (Erro de Conexão).`;
     }
     
-    lastLicenseCheck = now;
-    return { valid: isLicenseValidCached, error: licenseErrorCached };
+    // Salvar no cache específico desta chave
+    licenseCache.set(key, {
+        valid: isLicenseValid,
+        error: licenseError,
+        timestamp: now
+    });
+    
+    return { valid: isLicenseValid, error: licenseError };
 }
 
 // Middleware: Exigir Licença Ativa

@@ -51,9 +51,7 @@ function Save-AppConfig($config) {
 # CONFIGURAÇÃO DO SISTEMA DE ASSINATURA/LICENÇAS
 # IMPORTANTE: Altere esta URL para a URL pública do seu servidor central de licenças (ex: no Render/VPS)
 $global:LicenseUrl = "https://lovely-energy-production-78fe.up.railway.app"
-$global:LastLicenseCheck = [DateTime]::MinValue
-$global:IsLicenseValidCached = $false
-$global:LicenseErrorCached = ""
+$global:LicenseCache = @{} # key -> @{ valid = $true/$false; error = "..."; timestamp = [DateTime] }
 
 function Check-LicenseStatus($key) {
     if ([string]::IsNullOrEmpty($key)) {
@@ -67,9 +65,15 @@ function Check-LicenseStatus($key) {
     }
     
     $now = Get-Date
-    if (($now - $global:LastLicenseCheck).TotalMinutes -lt 10) {
-        return @{ valid = $global:IsLicenseValidCached; error = $global:LicenseErrorCached }
+    if ($global:LicenseCache.ContainsKey($key)) {
+        $cached = $global:LicenseCache[$key]
+        if (($now - $cached.timestamp).TotalMinutes -lt 10) {
+            return @{ valid = $cached.valid; error = $cached.error }
+        }
     }
+    
+    $isLicenseValid = $false
+    $licenseError = ""
     
     try {
         Write-Host "[Licenca] Verificando chave $key na API central..." -ForegroundColor Cyan
@@ -82,24 +86,30 @@ function Check-LicenseStatus($key) {
         
         if ($response) {
             if ($response.valid) {
-                $global:IsLicenseValidCached = $true
-                $global:LicenseErrorCached = ""
+                $isLicenseValid = $true
+                $licenseError = ""
             } else {
-                $global:IsLicenseValidCached = $false
-                $global:LicenseErrorCached = $response.error
+                $isLicenseValid = $false
+                $licenseError = $response.error
             }
         } else {
-            $global:IsLicenseValidCached = $false
-            $global:LicenseErrorCached = "Formato de resposta inválido do servidor de licenças."
+            $isLicenseValid = $false
+            $licenseError = "Formato de resposta inválido do servidor de licenças."
         }
     } catch {
         Write-Host "Erro ao validar licença: $($_.Exception.Message)" -ForegroundColor Red
-        $global:IsLicenseValidCached = $false
-        $global:LicenseErrorCached = "Não foi possível validar sua licença (Erro de Conexão)."
+        $isLicenseValid = $false
+        $licenseError = "Não foi possível validar sua licença (Erro de Conexão)."
     }
     
-    $global:LastLicenseCheck = $now
-    return @{ valid = $global:IsLicenseValidCached; error = $global:LicenseErrorCached }
+    # Salvar no cache específico desta chave
+    $global:LicenseCache[$key] = @{
+        valid = $isLicenseValid
+        error = $licenseError
+        timestamp = $now
+    }
+    
+    return @{ valid = $isLicenseValid; error = $licenseError }
 }
 
 # Helper: Resposta JSON
