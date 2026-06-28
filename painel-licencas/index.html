@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Painel administrativo de controle de licenças e assinaturas mensais do OfertasBot.">
+    <title>Gerenciador de Licenças - OfertasBot</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Background Glow Animations -->
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+
+    <!-- LOGIN SCREEN -->
+    <div class="auth-overlay" id="auth-overlay">
+        <div class="auth-card glass-card">
+            <div class="auth-header">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-key-skeleton"></i>
+                </div>
+                <h2>Chaves<span>Admin</span></h2>
+                <p>Insira a senha do administrador</p>
+            </div>
+            
+            <div class="auth-body">
+                <form id="admin-login-form">
+                    <div class="form-group" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.5rem;">
+                        <label for="admin-password">Senha Secreta</label>
+                        <input type="password" id="admin-password" placeholder="Senha do Administrador" required autocomplete="current-password">
+                    </div>
+                    <button type="submit" class="btn-primary" id="btn-login" style="width: 100%; display: flex; justify-content: center; align-items: center; gap: 8px;">
+                        <span>Acessar Painel</span>
+                        <i class="fa-solid fa-unlock-keyhole"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN APP CONTAINER -->
+    <div class="app-container" id="app-container" style="display: none;">
+        <!-- HEADER -->
+        <header class="app-header">
+            <div class="brand">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-key"></i>
+                </div>
+                <div class="logo-text">
+                    <h1>Licenças<span>Admin</span></h1>
+                    <p>Controle de Assinaturas Mensais</p>
+                </div>
+            </div>
+            
+            <div class="header-actions">
+                <button type="button" class="btn-secondary" id="btn-logout">
+                    <i class="fa-solid fa-right-from-bracket"></i> Sair
+                </button>
+            </div>
+        </header>
+
+        <!-- DASHBOARD BODY -->
+        <main class="app-main">
+            <!-- STATS CARDS -->
+            <section class="stats-grid">
+                <div class="stat-card glass-card">
+                    <div class="stat-icon" style="background: rgba(99, 102, 241, 0.15); color: #6366f1;">
+                        <i class="fa-solid fa-ticket"></i>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-label">Total de Chaves</span>
+                        <h2 id="stat-total">0</h2>
+                    </div>
+                </div>
+                
+                <div class="stat-card glass-card">
+                    <div class="stat-icon" style="background: rgba(34, 197, 94, 0.15); color: #22c55e;">
+                        <i class="fa-solid fa-circle-check"></i>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-label">Ativas / Pagas</span>
+                        <h2 id="stat-active">0</h2>
+                    </div>
+                </div>
+                
+                <div class="stat-card glass-card">
+                    <div class="stat-icon" style="background: rgba(239, 68, 68, 0.15); color: #ef4444;">
+                        <i class="fa-solid fa-circle-xmark"></i>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-label">Expiradas</span>
+                        <h2 id="stat-expired">0</h2>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ACTIONS BAR -->
+            <section class="action-bar glass-card" style="margin-bottom: 1.5rem; padding: 1.2rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                <div>
+                    <h3 style="margin: 0 0 0.2rem 0; font-family: 'Outfit', sans-serif; font-size: 1.2rem;">Gerador e Ativação</h3>
+                    <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted);">Crie chaves de acesso para enviar aos seus clientes.</p>
+                </div>
+                <div style="display: flex; gap: 0.8rem; align-items: center;">
+                    <select id="new-key-days" style="padding: 0.6rem 1rem; border-radius: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-family: inherit; font-size: 0.9rem; outline: none; cursor: pointer;">
+                        <option value="30" style="background: #1e1e2f;">30 Dias (1 Mês)</option>
+                        <option value="60" style="background: #1e1e2f;">60 Dias (2 Meses)</option>
+                        <option value="90" style="background: #1e1e2f;">90 Dias (3 Meses)</option>
+                        <option value="180" style="background: #1e1e2f;">180 Dias (Semestre)</option>
+                        <option value="365" style="background: #1e1e2f;">365 Dias (1 Ano)</option>
+                    </select>
+                    <button type="button" class="btn-primary" id="btn-generate-key">
+                        <span>Gerar Nova Chave</span>
+                        <i class="fa-solid fa-plus"></i>
+                    </button>
+                </div>
+            </section>
+
+            <!-- KEYS TABLE -->
+            <section class="keys-list glass-card" style="padding: 1.5rem; overflow-x: auto;">
+                <h3 style="margin: 0 0 1rem 0; font-family: 'Outfit', sans-serif; font-size: 1.2rem;">Chaves de Licença Cadastradas</h3>
+                
+                <table class="keys-table" style="width: 100%; border-collapse: collapse; text-align: left;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid rgba(255,255,255,0.05); color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase; font-weight: 600;">
+                            <th style="padding: 0.8rem 1rem;">Chave de Acesso</th>
+                            <th style="padding: 0.8rem 1rem;">Expiração</th>
+                            <th style="padding: 0.8rem 1rem;">Status / Dias Restantes</th>
+                            <th style="padding: 0.8rem 1rem; text-align: right;">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="keys-tbody">
+                        <tr>
+                            <td colspan="4" style="text-align: center; padding: 2rem; color: var(--text-muted);">Carregando chaves...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+        </main>
+    </div>
+
+    <!-- MODAL: ADD DAYS -->
+    <div class="modal-overlay" id="extend-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(5px); justify-content: center; align-items: center; z-index: 1000;">
+        <div class="glass-card" style="width: 100%; max-width: 400px; padding: 2rem; box-sizing: border-box; border-radius: 12px; animation: modalIn 0.3s ease;">
+            <h3 style="margin-top: 0; font-family: 'Outfit', sans-serif; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 8px;">
+                <i class="fa-solid fa-clock-rotate-left" style="color: var(--primary);"></i> Estender Licença
+            </h3>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem;" id="extend-modal-subtitle">Chave: OFT-XXXX</p>
+            
+            <input type="hidden" id="extend-key-input">
+            
+            <div class="form-group" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.5rem;">
+                <label for="extend-days" style="font-size: 0.85rem; color: var(--text-muted);">Dias para Adicionar (Ex: 30)</label>
+                <input type="number" id="extend-days" placeholder="Adicionar dias de acesso" value="30" min="1" required style="width: 100%; box-sizing: border-box; padding: 0.7rem; border-radius: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-family: inherit; font-size: 0.95rem; outline: none;">
+            </div>
+            
+            <div style="display: flex; justify-content: flex-end; gap: 0.8rem;">
+                <button type="button" class="btn-secondary" id="btn-cancel-extend" style="padding: 0.6rem 1.2rem; border-radius: 8px;">Cancelar</button>
+                <button type="button" class="btn-primary" id="btn-confirm-extend" style="padding: 0.6rem 1.2rem; border-radius: 8px;">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION -->
+    <div id="toast-container" style="position: fixed; bottom: 20px; right: 20px; z-index: 10000; display: flex; flex-direction: column; gap: 10px;"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
