@@ -412,16 +412,11 @@ async function saveSettings(event) {
         updateStatusIndicators();
         
         if (state.config.tgToken) {
-            testTelegramConnection();
+            verifyTelegramBot();
         }
     } catch (e) {
         console.error("Erro ao salvar no servidor", e);
         showToast('Erro ao salvar configurações no servidor.', 'error');
-    }
-}  
-    // Test connection if bot token exists
-    if (state.config.tgToken) {
-        verifyTelegramBot();
     }
 }
 
