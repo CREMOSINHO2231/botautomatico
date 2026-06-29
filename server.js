@@ -75,16 +75,41 @@ async function checkLicenseStatus(key, email) {
     return { valid: isLicenseValid, error: licenseError };
 }
 
+// Helper: Obter email da sessão
+function getSessionEmail(token) {
+    if (!token) return null;
+    const session = sessions.get(token);
+    if (session && typeof session === 'object') {
+        return session.email;
+    }
+    const config = getAppConfig();
+    if (config && config.admin) {
+        return config.admin.email;
+    }
+    return null;
+}
+
 // Middleware: Exigir Licença Ativa
 async function requireLicense(req, res, next) {
-    const config = getAppConfig();
-    const key = (config && config.admin) ? config.admin.accessKey : (process.env.ACCESS_KEY || null);
+    const authHeader = req.headers.authorization;
+    const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+    const email = getSessionEmail(token);
     
-    if (!key) {
-        return res.status(403).json({ error: "Chave de acesso/licença não configurada no servidor.", licenseExpired: true });
+    const config = getAppConfig();
+    let key = null;
+    
+    if (config && config.users && config.users[email]) {
+        key = config.users[email].accessKey;
+    } else if (config && config.admin && config.admin.email === email) {
+        key = config.admin.accessKey;
+    } else {
+        key = process.env.ACCESS_KEY || null;
     }
     
-    const email = (config && config.admin) ? config.admin.email : (process.env.ADMIN_EMAIL || null);
+    if (!key) {
+        return res.status(403).json({ error: "Chave de acesso/licença não configurada para este usuário.", licenseExpired: true });
+    }
+    
     const check = await checkLicenseStatus(key, email);
     if (check.valid) {
         next();
@@ -134,10 +159,15 @@ function saveAppConfig(config) {
 function isTokenValid(token) {
     if (!token) return false;
     if (sessions.has(token)) {
-        const expiry = sessions.get(token);
+        const session = sessions.get(token);
+        const expiry = typeof session === 'object' ? session.expiry : session;
         if (expiry > Date.now()) {
-            // Estender por 7 dias
-            sessions.set(token, Date.now() + 7 * 24 * 60 * 60 * 1000);
+            if (typeof session === 'object') {
+                session.expiry = Date.now() + 7 * 24 * 60 * 60 * 1000;
+                sessions.set(token, session);
+            } else {
+                sessions.set(token, Date.now() + 7 * 24 * 60 * 60 * 1000);
+            }
             return true;
         } else {
             sessions.delete(token);
@@ -173,8 +203,8 @@ app.get('/api/auth/status', async (req, res) => {
     const envEmail = process.env.ADMIN_EMAIL;
     const config = getAppConfig();
     
-    // O setup está concluído se o config.json existir ou se as variáveis de ambiente estiverem configuradas, e se a chave de acesso estiver presente
-    const setupCompleted = !!(envEmail || (config && config.admin && config.admin.email && config.admin.accessKey));
+    const hasUsers = config && ((config.users && Object.keys(config.users).length > 0) || (config.admin && config.admin.email));
+    const setupCompleted = !!(envEmail || hasUsers);
     
     const authHeader = req.headers.authorization;
     const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
@@ -183,10 +213,18 @@ app.get('/api/auth/status', async (req, res) => {
     let licenseExpired = false;
     let licenseError = '';
     
-    if (setupCompleted) {
-        const key = (config && config.admin) ? config.admin.accessKey : (process.env.ACCESS_KEY || null);
+    if (loggedIn) {
+        const email = getSessionEmail(token);
+        let key = null;
+        if (config && config.users && config.users[email]) {
+            key = config.users[email].accessKey;
+        } else if (config && config.admin && config.admin.email === email) {
+            key = config.admin.accessKey;
+        } else {
+            key = process.env.ACCESS_KEY || null;
+        }
+        
         if (key) {
-            const email = (config && config.admin) ? config.admin.email : (process.env.ADMIN_EMAIL || null);
             const check = await checkLicenseStatus(key, email);
             if (!check.valid) {
                 licenseExpired = true;
@@ -201,28 +239,23 @@ app.get('/api/auth/status', async (req, res) => {
     res.json({ setupCompleted, loggedIn, licenseExpired, licenseError });
 });
 
-// ROTA: Configuração Inicial (Setup)
+// ROTA: Configuração Inicial (Setup) - Registro Multi-usuário
 app.post('/api/auth/setup', async (req, res) => {
-    const envEmail = process.env.ADMIN_EMAIL;
-    const config = getAppConfig();
-    
-    // Se o setup já estiver concluído (no config.json ou env) e possuir a chave de licença bruta, exige autenticação para atualizar
-    const alreadySetup = envEmail || (config && config.admin && config.admin.email && config.admin.accessKey);
-    if (alreadySetup) {
-        const authHeader = req.headers.authorization;
-        const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
-        if (!isTokenValid(token)) {
-            return res.status(401).json({ error: "Não autorizado." });
-        }
-    }
-    
     const { email, password, key } = req.body;
     if (!email || !password || !key) {
         return res.status(400).json({ error: "Email, senha e chave de acesso são obrigatórios." });
     }
     
-    // Validar se a chave/licença é ativa e válida online
-    const licCheck = await checkLicenseStatus(key, email);
+    const config = getAppConfig() || { users: {} };
+    if (!config.users) config.users = {};
+    
+    const emailLower = email.toLowerCase().trim();
+    
+    if (config.users[emailLower] || (config.admin && config.admin.email && config.admin.email.toLowerCase() === emailLower)) {
+        return res.status(400).json({ error: "Este e-mail já está cadastrado. Faça login ou use outro e-mail." });
+    }
+    
+    const licCheck = await checkLicenseStatus(key, emailLower);
     if (!licCheck.valid) {
         return res.status(400).json({ error: `Chave inválida ou expirada: ${licCheck.error}` });
     }
@@ -230,17 +263,15 @@ app.post('/api/auth/setup', async (req, res) => {
     const passHash = getSha256Hash(password);
     const keyHash = getSha256Hash(key);
     
-    const newConfig = {
-        admin: {
-            email: email,
-            passwordHash: passHash,
-            accessKeyHash: keyHash,
-            accessKey: key // Salvar chave bruta para validações futuras
-        }
+    config.users[emailLower] = {
+        email: emailLower,
+        passwordHash: passHash,
+        accessKeyHash: keyHash,
+        accessKey: key
     };
     
-    if (saveAppConfig(newConfig)) {
-        res.json({ success: true, message: "Configurações salvas!" });
+    if (saveAppConfig(config)) {
+        res.json({ success: true, message: "Cadastro realizado com sucesso!" });
     } else {
         res.status(500).json({ error: "Não foi possível salvar as configurações localmente." });
     }
@@ -253,25 +284,33 @@ app.post('/api/auth/update-license', async (req, res) => {
         return res.status(400).json({ error: "A chave de acesso é obrigatória." });
     }
     
-    // Limpar o cache de licenças para forçar uma verificação limpa e atualizada online
     licenseCache.clear();
     
-    // Validar a nova chave online
-    const config = getAppConfig();
-    const email = (config && config.admin) ? config.admin.email : null;
+    const authHeader = req.headers.authorization;
+    const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+    const email = getSessionEmail(token);
+    
+    if (!email) {
+        return res.status(401).json({ error: "Não autorizado." });
+    }
+    
     const licCheck = await checkLicenseStatus(key, email);
     if (!licCheck.valid) {
         return res.status(400).json({ error: `Chave inválida ou expirada: ${licCheck.error}` });
     }
     
-    // Carregar configuração atual e atualizar a chave
-    const currentConfig = config || { admin: {} };
-    if (!currentConfig.admin) currentConfig.admin = {};
+    const config = getAppConfig();
+    if (config && config.users && config.users[email]) {
+        config.users[email].accessKey = key;
+        config.users[email].accessKeyHash = getSha256Hash(key);
+    } else if (config && config.admin && config.admin.email === email) {
+        config.admin.accessKey = key;
+        config.admin.accessKeyHash = getSha256Hash(key);
+    } else {
+        return res.status(404).json({ error: "Usuário não encontrado." });
+    }
     
-    currentConfig.admin.accessKey = key;
-    currentConfig.admin.accessKeyHash = getSha256Hash(key);
-    
-    if (saveAppConfig(currentConfig)) {
+    if (saveAppConfig(config)) {
         res.json({ success: true });
     } else {
         res.status(500).json({ error: "Falha ao salvar a nova chave no servidor." });
@@ -281,32 +320,25 @@ app.post('/api/auth/update-license', async (req, res) => {
 // ROTA: Login
 app.post('/api/auth/login', async (req, res) => {
     const { email, password, key } = req.body;
-    const envEmail = process.env.ADMIN_EMAIL;
-    const envPassword = process.env.ADMIN_PASSWORD;
-    const envKey = process.env.ACCESS_KEY;
-    
-    let adminEmail, adminPasswordHash, adminKeyHash, adminKey;
-    
-    // Se houver variáveis de ambiente no Render, usa elas diretamente
-    if (envEmail && envPassword && envKey) {
-        adminEmail = envEmail;
-        adminPasswordHash = getSha256Hash(envPassword);
-        adminKeyHash = getSha256Hash(envKey);
-        adminKey = envKey;
-    } else {
-        // Caso contrário, busca do config.json local
-        const config = getAppConfig();
-        if (!config || !config.admin || !config.admin.email) {
-            return res.status(400).json({ error: "Setup inicial não foi realizado." });
-        }
-        adminEmail = config.admin.email;
-        adminPasswordHash = config.admin.passwordHash;
-        adminKeyHash = config.admin.accessKeyHash;
-        adminKey = config.admin.accessKey;
+    if (!email || !password || !key) {
+        return res.status(400).json({ error: "E-mail, senha e chave de acesso são obrigatórios." });
     }
     
-    // Validar se a chave digitada coincide e se a licença está ativa online
-    const licCheck = await checkLicenseStatus(key, email);
+    const emailLower = email.toLowerCase().trim();
+    const config = getAppConfig();
+    
+    let user = null;
+    if (config && config.users && config.users[emailLower]) {
+        user = config.users[emailLower];
+    } else if (config && config.admin && config.admin.email && config.admin.email.toLowerCase() === emailLower) {
+        user = config.admin;
+    }
+    
+    if (!user) {
+        return res.status(401).json({ error: "E-mail, senha ou chave de acesso incorretos." });
+    }
+    
+    const licCheck = await checkLicenseStatus(key, emailLower);
     if (!licCheck.valid) {
         return res.status(403).json({ error: `Licença inativa: ${licCheck.error}`, licenseExpired: true });
     }
@@ -314,12 +346,12 @@ app.post('/api/auth/login', async (req, res) => {
     const passHash = getSha256Hash(password);
     const keyHash = getSha256Hash(key);
     
-    if (email === adminEmail && passHash === adminPasswordHash && keyHash === adminKeyHash) {
-        // Bloqueio de múltiplos dispositivos: Limpa todas as sessões anteriores!
-        sessions.clear();
-        
+    if (passHash === user.passwordHash && keyHash === user.accessKeyHash) {
         const token = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
-        sessions.set(token, Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 dias
+        sessions.set(token, {
+            expiry: Date.now() + 7 * 24 * 60 * 60 * 1000,
+            email: emailLower
+        });
         res.json({ success: true, token });
     } else {
         res.status(401).json({ error: "E-mail, senha ou chave de acesso incorretos." });

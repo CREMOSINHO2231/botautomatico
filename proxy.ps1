@@ -163,10 +163,19 @@ try {
         function Is-TokenValid($token) {
             if ([string]::IsNullOrEmpty($token)) { return $false }
             if ($global:Sessions.ContainsKey($token)) {
-                $expiry = $global:Sessions[$token]
+                $session = $global:Sessions[$token]
+                $expiry = $session
+                if ($session -is [hashtable]) {
+                    $expiry = $session.expiry
+                }
                 if ($expiry -gt (Get-Date)) {
                     # Estende por mais 7 dias de atividade
-                    $global:Sessions[$token] = (Get-Date).AddDays(7)
+                    if ($session -is [hashtable]) {
+                        $session.expiry = (Get-Date).AddDays(7)
+                        $global:Sessions[$token] = $session
+                    } else {
+                        $global:Sessions[$token] = (Get-Date).AddDays(7)
+                    }
                     return $true
                 } else {
                     $global:Sessions.Remove($token)
@@ -175,30 +184,49 @@ try {
             return $false
         }
 
+        # Helper para obter o e-mail da sessão
+        function Get-SessionEmail($token) {
+            if ([string]::IsNullOrEmpty($token)) { return $null }
+            if ($global:Sessions.ContainsKey($token)) {
+                $session = $global:Sessions[$token]
+                if ($session -is [hashtable]) {
+                    return $session.email
+                }
+            }
+            $config = Get-AppConfig
+            if ($config -and $config.admin -and $config.admin.email) {
+                return $config.admin.email
+            }
+            return $null
+        }
+
         # ROTA: Status de Autenticação
         if ($rawPath -eq "/api/auth/status") {
             $config = Get-AppConfig
-            $setupCompleted = ($config -and $config.admin -and $config.admin.email)
+            
+            $hasUsers = $config -and (
+                ($config.users -and ($config.users.PSObject.Properties.Name.Count -gt 0)) -or 
+                ($config.admin -and $config.admin.email)
+            )
+            $setupCompleted = ($env:ADMIN_EMAIL -or $hasUsers)
             $isLoggedIn = Is-TokenValid $authToken
             
             $licenseExpired = $false
             $licenseError = ""
             
-            if ($setupCompleted) {
+            if ($isLoggedIn) {
+                $email = Get-SessionEmail $authToken
                 $key = $null
-                if ($config -and $config.admin -and $config.admin.accessKey) {
+                
+                if ($config -and $config.users -and $config.users.$email) {
+                    $key = $config.users.$email.accessKey
+                } elseif ($config -and $config.admin -and $config.admin.email -eq $email -and $config.admin.accessKey) {
                     $key = $config.admin.accessKey
                 } elseif ($env:ACCESS_KEY) {
                     $key = $env:ACCESS_KEY
                 }
                 
                 if ($key) {
-                    $email = $null
-                    if ($config -and $config.admin -and $config.admin.email) {
-                        $email = $config.admin.email
-                    } elseif ($env:ADMIN_EMAIL) {
-                        $email = $env:ADMIN_EMAIL
-                    }
                     $check = Check-LicenseStatus $key $email
                     if (-not $check.valid) {
                         $licenseExpired = $true
@@ -219,20 +247,11 @@ try {
             continue
         }
         
-        # ROTA: Configuração Inicial (Setup)
+        # ROTA: Configuração Inicial (Setup) - Registro Multi-usuário
         elseif ($rawPath -eq "/api/auth/setup") {
             if ($request.HttpMethod -ne "POST") {
                 Send-JsonResponse $response 405 @{ error = "Metodo nao permitido" }
                 continue
-            }
-            
-            # Se o setup já está feito e possui a chave de licença bruta, exige autenticação para atualizar
-            $config = Get-AppConfig
-            if ($config -and $config.admin -and $config.admin.email -and $config.admin.accessKey) {
-                if (-not (Is-TokenValid $authToken)) {
-                    Send-JsonResponse $response 401 @{ error = "Nao autorizado" }
-                    continue
-                }
             }
             
             $reader = New-Object System.IO.StreamReader($request.InputStream)
@@ -250,8 +269,17 @@ try {
                     continue
                 }
                 
-                # Validar se a licença/chave é ativa e válida online
-                $licCheck = Check-LicenseStatus $key $email
+                $emailLower = $email.ToLower().Trim()
+                $config = Get-AppConfig
+                if (-not $config) { $config = @{ users = @{} } }
+                if (-not $config.users) { $config.users = @{} }
+                
+                if ($config.users.$emailLower -or ($config.admin -and $config.admin.email -eq $emailLower)) {
+                    Send-JsonResponse $response 400 @{ error = "Este e-mail ja esta cadastrado. Faca login ou use outro e-mail." }
+                    continue
+                }
+                
+                $licCheck = Check-LicenseStatus $key $emailLower
                 if (-not $licCheck.valid) {
                     Send-JsonResponse $response 400 @{ error = "Chave invalida ou expirada: $($licCheck.error)" }
                     continue
@@ -260,22 +288,22 @@ try {
                 $passHash = Get-Sha256Hash $password
                 $keyHash = Get-Sha256Hash $key
                 
-                $newConfig = @{
-                    admin = @{
-                        email = $email
-                        passwordHash = $passHash
-                        accessKeyHash = $keyHash
-                        accessKey = $key # Salvar chave bruta para validações futuras
-                    }
+                $newUser = @{
+                    email = $emailLower
+                    passwordHash = $passHash
+                    accessKeyHash = $keyHash
+                    accessKey = $key
                 }
                 
-                if (Save-AppConfig $newConfig) {
+                $config.users.$emailLower = $newUser
+                
+                if (Save-AppConfig $config) {
                     Send-JsonResponse $response 200 @{ success = $true; message = "Cadastro concluido!" }
                 } else {
                     Send-JsonResponse $response 500 @{ error = "Nao foi possivel salvar localmente." }
                 }
             } catch {
-                Send-JsonResponse $response 400 @{ error = "JSON invalido: $($_.Exception.Message)" }
+                Send-JsonResponse $response 400 @{ error = "Erro ao processar cadastro: $($_.Exception.Message)" }
             }
             continue
         }
@@ -295,32 +323,31 @@ try {
                     continue
                 }
                 
-                # Limpar cache de licença para forçar verificação online
                 $global:LicenseCache.Clear()
                 
-                # Validar a nova chave online
-                $config = Get-AppConfig
-                $email = $null
-                if ($config -and $config.admin -and $config.admin.email) {
-                    $email = $config.admin.email
+                $email = Get-SessionEmail $authToken
+                if (-not $email) {
+                    Send-JsonResponse $response 401 @{ error = "Nao autorizado" }
+                    continue
                 }
+                
                 $licCheck = Check-LicenseStatus $key $email
                 if (-not $licCheck.valid) {
                     Send-JsonResponse $response 400 @{ error = "Chave inválida ou expirada: $($licCheck.error)" }
                     continue
                 }
                 
-                # Carregar config, atualizar chave e salvar
                 $config = Get-AppConfig
-                if (-not $config) {
-                    $config = @{ admin = @{} }
+                if ($config -and $config.users -and $config.users.$email) {
+                    $config.users.$email.accessKey = $key
+                    $config.users.$email.accessKeyHash = Get-Sha256Hash $key
+                } elseif ($config -and $config.admin -and $config.admin.email -eq $email) {
+                    $config.admin.accessKey = $key
+                    $config.admin.accessKeyHash = Get-Sha256Hash $key
+                } else {
+                    Send-JsonResponse $response 404 @{ error = "Usuário não encontrado." }
+                    continue
                 }
-                if (-not $config.admin) {
-                    $config.admin = @{}
-                }
-                
-                $config.admin.accessKey = $key
-                $config.admin.accessKeyHash = Get-Sha256Hash $key
                 
                 if (Save-AppConfig $config) {
                     Send-JsonResponse $response 200 @{ success = $true }
@@ -328,18 +355,13 @@ try {
                     Send-JsonResponse $response 500 @{ error = "Falha ao salvar a nova chave no servidor." }
                 }
             } catch {
-                Send-JsonResponse $response 400 @{ error = "Dados inválidos: $($_.Exception.Message)" }
+                Send-JsonResponse $response 400 @{ error = "Erro ao atualizar licença: $($_.Exception.Message)" }
             }
             continue
         }
         
         # ROTA: Login Direto (Valida E-mail, Senha e Chave)
-        elseif ($rawPath -eq "/api/auth/login") {
-            if ($request.HttpMethod -ne "POST") {
-                Send-JsonResponse $response 405 @{ error = "Metodo nao permitido" }
-                continue
-            }
-            
+        elseif ($rawPath -eq "/api/auth/login" -and $request.HttpMethod -eq "POST") {
             $reader = New-Object System.IO.StreamReader($request.InputStream)
             $body = $reader.ReadToEnd()
             $reader.Close()
@@ -350,14 +372,27 @@ try {
                 $password = $data.password
                 $key = $data.key
                 
-                $config = Get-AppConfig
-                if (-not $config -or -not $config.admin -or -not $config.admin.email) {
-                    Send-JsonResponse $response 400 @{ error = "Setup inicial nao foi realizado." }
+                if ([string]::IsNullOrEmpty($email) -or [string]::IsNullOrEmpty($password) -or [string]::IsNullOrEmpty($key)) {
+                    Send-JsonResponse $response 400 @{ error = "Dados incompletos para login." }
                     continue
                 }
                 
-                # Validar se a licença está ativa online
-                $licCheck = Check-LicenseStatus $key $email
+                $emailLower = $email.ToLower().Trim()
+                $config = Get-AppConfig
+                
+                $user = $null
+                if ($config -and $config.users -and $config.users.$emailLower) {
+                    $user = $config.users.$emailLower
+                } elseif ($config -and $config.admin -and $config.admin.email -eq $emailLower) {
+                    $user = $config.admin
+                }
+                
+                if (-not $user) {
+                    Send-JsonResponse $response 401 @{ error = "E-mail, senha ou chave de acesso incorretos." }
+                    continue
+                }
+                
+                $licCheck = Check-LicenseStatus $key $emailLower
                 if (-not $licCheck.valid) {
                     Send-JsonResponse $response 403 @{ error = "Licenca inativa: $($licCheck.error)"; licenseExpired = $true }
                     continue
@@ -366,14 +401,12 @@ try {
                 $passHash = Get-Sha256Hash $password
                 $keyHash = Get-Sha256Hash $key
                 
-                if ($email -eq $config.admin.email -and $passHash -eq $config.admin.passwordHash -and $keyHash -eq $config.admin.accessKeyHash) {
-                    # Bloqueio de múltiplos dispositivos: Limpa todas as sessões anteriores!
-                    $global:Sessions.Clear()
-                    
-                    # Gerar Session Token diretamente
+                if ($passHash -eq $user.passwordHash -and $keyHash -eq $user.accessKeyHash) {
                     $token = [System.Guid]::NewGuid().ToString()
-                    $global:Sessions[$token] = (Get-Date).AddDays(7) # Valido por 7 dias
-                    
+                    $global:Sessions[$token] = @{
+                        expiry = (Get-Date).AddDays(7)
+                        email = $emailLower
+                    }
                     Send-JsonResponse $response 200 @{ success = $true; token = $token }
                 } else {
                     Send-JsonResponse $response 401 @{ error = "E-mail, senha ou chave de acesso incorretos." }
@@ -403,27 +436,25 @@ try {
             
             # Validar se a licença está ativa
             $config = Get-AppConfig
+            $email = Get-SessionEmail $authToken
             $key = $null
-            if ($config -and $config.admin -and $config.admin.accessKey) {
+            
+            if ($config -and $config.users -and $config.users.$email) {
+                $key = $config.users.$email.accessKey
+            } elseif ($config -and $config.admin -and $config.admin.email -eq $email -and $config.admin.accessKey) {
                 $key = $config.admin.accessKey
             } elseif ($env:ACCESS_KEY) {
                 $key = $env:ACCESS_KEY
             }
             
             if ($key) {
-                $email = $null
-                if ($config -and $config.admin -and $config.admin.email) {
-                    $email = $config.admin.email
-                } elseif ($env:ADMIN_EMAIL) {
-                    $email = $env:ADMIN_EMAIL
-                }
                 $check = Check-LicenseStatus $key $email
                 if (-not $check.valid) {
-                    Send-JsonResponse $response 403 @{ error = $check.error; licenseExpired = $true }
+                    Send-JsonResponse $response 403 @{ error = "Licenca inativa ou expirada: $($check.error)" }
                     continue
                 }
             } else {
-                Send-JsonResponse $response 403 @{ error = "Chave de licença não configurada no servidor."; licenseExpired = $true }
+                Send-JsonResponse $response 403 @{ error = "Chave de licença/acesso não configurada para este usuário." }
                 continue
             }
             
