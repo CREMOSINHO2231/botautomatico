@@ -426,6 +426,162 @@ try {
             continue
         }
         
+        # ROTA: Obter Configurações e Status da Automação
+        elseif ($rawPath -eq "/api/settings") {
+            if (-not (Is-TokenValid $authToken)) {
+                Send-JsonResponse $response 401 @{ error = "Nao autorizado. Faca login primeiro." }
+                continue
+            }
+            
+            $email = Get-SessionEmail $authToken
+            $config = Get-AppConfig
+            
+            $user = $null
+            if ($config -and $config.users -and $config.users.$email) {
+                $user = $config.users.$email
+            } elseif ($config -and $config.admin -and $config.admin.email -eq $email) {
+                $user = $config.admin
+            }
+            
+            if (-not $user) {
+                Send-JsonResponse $response 404 @{ error = "Usuario nao encontrado." }
+                continue
+            }
+            
+            $settings = if ($user.settings) { $user.settings } else { @{} }
+            $template = if ($user.template) { $user.template } else { $null }
+            $automation = if ($user.automation) { $user.automation } else { @{ active = $false; blacklist = ""; category = "all"; interval = 10; sources = @{ promobit = $true; gatry = $true } } }
+            
+            Send-JsonResponse $response 200 @{
+                settings = $settings
+                template = $template
+                automation = $automation
+            }
+            continue
+        }
+        
+        # ROTA: Salvar Configurações
+        elseif ($rawPath -eq "/api/settings" -and $request.HttpMethod -eq "POST") {
+            if (-not (Is-TokenValid $authToken)) {
+                Send-JsonResponse $response 401 @{ error = "Nao autorizado. Faca login primeiro." }
+                continue
+            }
+            
+            $email = Get-SessionEmail $authToken
+            $reader = New-Object System.IO.StreamReader($request.InputStream)
+            $body = $reader.ReadToEnd()
+            $reader.Close()
+            
+            try {
+                $data = $body | ConvertFrom-Json
+                $config = Get-AppConfig
+                
+                $user = $null
+                $userKey = $null
+                if ($config -and $config.users -and $config.users.$email) {
+                    $user = $config.users.$email
+                    $userKey = "users"
+                } elseif ($config -and $config.admin -and $config.admin.email -eq $email) {
+                    $user = $config.admin
+                    $userKey = "admin"
+                }
+                
+                if (-not $user) {
+                    Send-JsonResponse $response 404 @{ error = "Usuario nao encontrado." }
+                    continue
+                }
+                
+                if ($data.settings) { $user.settings = $data.settings }
+                if ($data.template -ne $null) { $user.template = $data.template }
+                if ($data.automation) {
+                    if (-not $user.automation) {
+                        $user.automation = @{ active = $false; blacklist = ""; category = "all"; interval = 10; sources = @{ promobit = $true; gatry = $true } }
+                    }
+                    foreach ($prop in $data.automation.PSObject.Properties) {
+                        $user.automation.($prop.Name) = $prop.Value
+                    }
+                }
+                
+                if ($userKey -eq "users") {
+                    $config.users.$email = $user
+                } else {
+                    $config.admin = $user
+                }
+                
+                if (Save-AppConfig $config) {
+                    Send-JsonResponse $response 200 @{ success = $true }
+                } else {
+                    Send-JsonResponse $response 500 @{ error = "Nao foi possivel salvar no servidor." }
+                }
+            } catch {
+                Send-JsonResponse $response 400 @{ error = "Dados invalidos: $($_.Exception.Message)" }
+            }
+            continue
+        }
+        
+        # ROTA: Ativar/Desativar Autopostagem
+        elseif ($rawPath -eq "/api/automation/toggle" -and $request.HttpMethod -eq "POST") {
+            if (-not (Is-TokenValid $authToken)) {
+                Send-JsonResponse $response 401 @{ error = "Nao autorizado. Faca login primeiro." }
+                continue
+            }
+            
+            $email = Get-SessionEmail $authToken
+            $reader = New-Object System.IO.StreamReader($request.InputStream)
+            $body = $reader.ReadToEnd()
+            $reader.Close()
+            
+            try {
+                $data = $body | ConvertFrom-Json
+                $config = Get-AppConfig
+                
+                $user = $null
+                $userKey = $null
+                if ($config -and $config.users -and $config.users.$email) {
+                    $user = $config.users.$email
+                    $userKey = "users"
+                } elseif ($config -and $config.admin -and $config.admin.email -eq $email) {
+                    $user = $config.admin
+                    $userKey = "admin"
+                }
+                
+                if (-not $user) {
+                    Send-JsonResponse $response 404 @{ error = "Usuario nao encontrado." }
+                    continue
+                }
+                
+                if (-not $user.automation) {
+                    $user.automation = @{ active = $false; blacklist = ""; category = "all"; interval = 10; sources = @{ promobit = $true; gatry = $true } }
+                }
+                
+                $user.automation.active = [bool]$data.active
+                if ($data.interval) {
+                    $user.automation.interval = [int]$data.interval
+                }
+                
+                if ($userKey -eq "users") {
+                    $config.users.$email = $user
+                } else {
+                    $config.admin = $user
+                }
+                
+                if (Save-AppConfig $config) {
+                    Send-JsonResponse $response 200 @{ success = $true; active = [bool]$user.automation.active }
+                } else {
+                    Send-JsonResponse $response 500 @{ error = "Erro ao salvar status de automacao." }
+                }
+            } catch {
+                Send-JsonResponse $response 400 @{ error = "Dados invalidos: $($_.Exception.Message)" }
+            }
+            continue
+        }
+        
+        # ROTA: Logs
+        elseif ($rawPath -eq "/api/automation/logs") {
+            Send-JsonResponse $response 200 @{ logs = @("[LOCAL] Automação 24/7 configurada. Inicie com 'npm start' (Node.js) para rodar no servidor.") }
+            continue
+        }
+        
         # ROTA: Proxy de CORS (Protegida)
         elseif ($rawPath -eq "/proxy") {
             # Validar autenticacao

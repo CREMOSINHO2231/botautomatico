@@ -57,14 +57,15 @@ const state = {
    ========================================================================== */
 document.addEventListener('DOMContentLoaded', () => {
     // Inicializar o sistema de autenticação antes de inicializar o painel
-    initAuthSystem().then((authenticated) => {
+    initAuthSystem().then(async (authenticated) => {
         if (authenticated) {
-            loadSettings();
+            await loadSettings();
             initTabNavigation();
             initEventListeners();
             updateStatusIndicators();
             renderHistory();
             resetProductForm();
+            startLogsPolling();
         }
     });
 });
@@ -316,103 +317,57 @@ function setupAuthFormListeners() {
 
 /* ==========================================================================
    LOCALSTORAGE & CONFIG MANAGEMENT
-   ========================================================================== */
-function loadSettings() {
-    // Load config
-    const savedConfig = localStorage.getItem('cfg_ofertas_bot_tg');
-    if (savedConfig) {
-        try {
-            state.config = { ...state.config, ...JSON.parse(savedConfig) };
-        } catch (e) {
-            console.error("Erro ao carregar configurações", e);
-        }
-    }
+   ==========================async function loadSettings() {
+    const token = localStorage.getItem('auth_token');
+    const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
     
-    // Load template
-    const savedTemplate = localStorage.getItem('cfg_template_tg');
-    const oldDefault1 = `🔥 <b>{title}</b>\n\n💵 De: <s>R$ {oldPrice}</s>\n🤑 Por apenas: <b>R$ {price}</b> ({discount}% OFF)\n\n🛒 Compre aqui: {link}`;
-    const oldDefault2 = `🔥 <b>{title}</b>\n\n💵 De: <s>R$ {oldPrice}</s>\n🤑 Por apenas: <b>R$ {price}</b>\n\n🎫 Cupom: <b>{coupon}</b>\n\n🛒 Compre aqui: {link}`;
-    
-    const norm = (t) => t ? t.replace(/\r?\n/g, '\n').trim() : '';
-    const savedNorm = norm(savedTemplate);
-
-    if (savedTemplate && (savedNorm === norm(oldDefault1) || savedNorm === norm(oldDefault2))) {
-        state.template = DEFAULT_TEMPLATE;
-        localStorage.setItem('cfg_template_tg', DEFAULT_TEMPLATE);
-    } else {
-        state.template = savedTemplate || DEFAULT_TEMPLATE;
-    }
-    document.getElementById('active-template').value = state.template;
-
-    // Load history
-    const savedHistory = localStorage.getItem('cfg_history_tg');
-    if (savedHistory) {
-        try {
-            state.history = JSON.parse(savedHistory);
-        } catch (e) {
-            state.history = [];
+    try {
+        const res = await fetch('/api/settings', { headers });
+        if (!res.ok) throw new Error("Falha ao carregar configurações do servidor");
+        const data = await res.json();
+        
+        if (data.settings) {
+            state.config = { ...state.config, ...data.settings };
         }
-    }
-
-    // Load automation details
-    state.automation.blacklist = localStorage.getItem('cfg_auto_blacklist') || '';
-    document.getElementById('cfg-auto-blacklist').value = state.automation.blacklist;
-
-    state.automation.category = localStorage.getItem('cfg_auto_category') || 'all';
-    document.getElementById('cfg-auto-category').value = state.automation.category;
-
-    const savedPosted = localStorage.getItem('cfg_already_posted');
-    if (savedPosted) {
-        try {
-            state.automation.alreadyPostedDeals = JSON.parse(savedPosted);
-        } catch (e) {
-            state.automation.alreadyPostedDeals = [];
+        
+        state.template = data.template || DEFAULT_TEMPLATE;
+        document.getElementById('active-template').value = state.template;
+        
+        if (data.automation) {
+            state.automation = { ...state.automation, ...data.automation };
+            document.getElementById('cfg-auto-blacklist').value = state.automation.blacklist || '';
+            document.getElementById('cfg-auto-category').value = state.automation.category || 'all';
+            document.getElementById('chk-auto-facebook').checked = state.automation.autoFacebook || false;
+            
+            if (state.automation.interval) {
+                document.getElementById('cfg-auto-interval').value = state.automation.interval;
+            }
+            if (state.automation.sources) {
+                document.getElementById('chk-src-promobit').checked = state.automation.sources.promobit !== false;
+                document.getElementById('chk-src-gatry').checked = state.automation.sources.gatry !== false;
+            }
+            
+            updateAutomationUI(state.automation.active);
         }
+        
+        document.getElementById('cfg-tg-token').value = state.config.tgToken || '';
+        document.getElementById('cfg-tg-chat-id').value = state.config.tgChatId || '';
+        document.getElementById('cfg-amz-tag').value = state.config.amzTag || '';
+        document.getElementById('cfg-ml-campaign').value = state.config.mlCampaign || '';
+        document.getElementById('cfg-shopee-key').value = state.config.shopeeKey || '';
+        document.getElementById('cfg-shopee-secret').value = state.config.shopeeSecret || '';
+        document.getElementById('cfg-shopee-fallback').value = state.config.shopeeFallback || '';
+        document.getElementById('cfg-ali-id').value = state.config.aliId || '';
+        document.getElementById('cfg-fb-token').value = state.config.fbToken || '';
+        document.getElementById('cfg-fb-page-id').value = state.config.fbPageId || '';
+        
+    } catch (e) {
+        console.error("Erro ao carregar configurações do servidor, usando fallback local", e);
+        writeLog("Aviso: Não foi possível carregar configurações do servidor.", "warning");
     }
-
-    // Load Instagram settings
-    state.instagram = {
-        token: localStorage.getItem('cfg_ig_token') || '',
-        businessId: localStorage.getItem('cfg_ig_business_id') || '',
-        textTop: localStorage.getItem('cfg_ig_text_top') || 'SUPER OFERTA!',
-        textBottom: localStorage.getItem('cfg_ig_text_bottom') || 'LINK NO GRUPO NA BIO! 👆',
-        theme: localStorage.getItem('cfg_ig_theme') || 'instagram',
-        duration: parseInt(localStorage.getItem('cfg_ig_duration')) || 30,
-        videoBlob: null,
-        autoPost: localStorage.getItem('cfg_ig_autopost') === 'true',
-        postType: localStorage.getItem('cfg_ig_post_type') || 'reels',
-        sponsored: localStorage.getItem('cfg_ig_sponsored') === 'true'
-    };
-
-    // Populate inputs in Config Form
-    document.getElementById('cfg-tg-token').value = state.config.tgToken || '';
-    document.getElementById('cfg-tg-chat-id').value = state.config.tgChatId || '';
-    document.getElementById('cfg-amz-tag').value = state.config.amzTag || '';
-    document.getElementById('cfg-ml-campaign').value = state.config.mlCampaign || '';
-    document.getElementById('cfg-shopee-key').value = state.config.shopeeKey || '';
-    document.getElementById('cfg-shopee-secret').value = state.config.shopeeSecret || '';
-    document.getElementById('cfg-shopee-fallback').value = state.config.shopeeFallback || '';
-    document.getElementById('cfg-ali-id').value = state.config.aliId || '';
-    document.getElementById('cfg-fb-token').value = state.config.fbToken || '';
-    document.getElementById('cfg-fb-page-id').value = state.config.fbPageId || '';
-
-    // Load automation checkboxes
-    state.automation.autoFacebook = localStorage.getItem('cfg_auto_facebook') === 'true';
-    document.getElementById('chk-auto-facebook').checked = state.automation.autoFacebook;
-
-    // Populate Instagram inputs
-    document.getElementById('cfg-ig-token').value = state.instagram.token;
-    document.getElementById('cfg-ig-business-id').value = state.instagram.businessId;
-    document.getElementById('chk-auto-instagram').checked = state.instagram.autoPost;
-    document.getElementById('ig-video-text').value = state.instagram.textTop;
-    document.getElementById('ig-video-cta').value = state.instagram.textBottom;
-    document.getElementById('ig-video-theme').value = state.instagram.theme;
-    document.getElementById('ig-video-duration').value = state.instagram.duration;
-    document.getElementById('ig-post-type').value = state.instagram.postType;
-    document.getElementById('ig-sim-sponsored').checked = state.instagram.sponsored;
 }
 
-function saveSettings(event) {
+async function saveSettings(event) {
     if (event) event.preventDefault();
 
     state.config.tgToken = document.getElementById('cfg-tg-token').value.trim();
@@ -426,21 +381,44 @@ function saveSettings(event) {
     state.config.fbToken = document.getElementById('cfg-fb-token').value.trim();
     state.config.fbPageId = document.getElementById('cfg-fb-page-id').value.trim();
 
-    // Save Instagram settings
-    state.instagram.token = document.getElementById('cfg-ig-token').value.trim();
-    state.instagram.businessId = document.getElementById('cfg-ig-business-id').value.trim();
-    state.instagram.postType = document.getElementById('ig-post-type').value;
-    state.instagram.sponsored = document.getElementById('ig-sim-sponsored').checked;
+    const token = localStorage.getItem('auth_token');
+    const headers = { 
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : ''
+    };
     
-    localStorage.setItem('cfg_ofertas_bot_tg', JSON.stringify(state.config));
-    localStorage.setItem('cfg_ig_token', state.instagram.token);
-    localStorage.setItem('cfg_ig_business_id', state.instagram.businessId);
-    localStorage.setItem('cfg_ig_post_type', state.instagram.postType);
-    localStorage.setItem('cfg_ig_sponsored', state.instagram.sponsored);
-
-    showToast('Configurações salvas com sucesso!', 'success');
-    updateStatusIndicators();
-    
+    try {
+        const res = await fetch('/api/settings', {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({
+                settings: state.config,
+                template: state.template,
+                automation: {
+                    blacklist: state.automation.blacklist,
+                    category: state.automation.category,
+                    autoFacebook: state.automation.autoFacebook,
+                    sources: {
+                        promobit: document.getElementById('chk-src-promobit').checked,
+                        gatry: document.getElementById('chk-src-gatry').checked
+                    }
+                }
+            })
+        });
+        
+        if (!res.ok) throw new Error("Erro de resposta HTTP");
+        
+        showToast('Configurações salvas com sucesso no servidor!', 'success');
+        updateStatusIndicators();
+        
+        if (state.config.tgToken) {
+            testTelegramConnection();
+        }
+    } catch (e) {
+        console.error("Erro ao salvar no servidor", e);
+        showToast('Erro ao salvar configurações no servidor.', 'error');
+    }
+}  
     // Test connection if bot token exists
     if (state.config.tgToken) {
         verifyTelegramBot();
@@ -550,20 +528,38 @@ function initEventListeners() {
         if (e.key === 'Enter') handleFetchAndConvert();
     });
 
+    // Helper para salvar modelo no servidor
+    async function saveTemplateToServer(text) {
+        const token = localStorage.getItem('auth_token');
+        const headers = { 
+            'Content-Type': 'application/json',
+            'Authorization': token ? `Bearer ${token}` : ''
+        };
+        try {
+            await fetch('/api/settings', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({ template: text })
+            });
+        } catch (e) {
+            console.error("Erro ao salvar modelo no servidor", e);
+        }
+    }
+
     // Template save
-    document.getElementById('btn-save-template').addEventListener('click', () => {
+    document.getElementById('btn-save-template').addEventListener('click', async () => {
         const text = document.getElementById('active-template').value;
         state.template = text;
-        localStorage.setItem('cfg_template_tg', text);
+        await saveTemplateToServer(text);
         showToast('Modelo de post salvo!', 'success');
         updateLivePreview();
     });
 
     // Template reset
-    document.getElementById('btn-reset-template').addEventListener('click', () => {
+    document.getElementById('btn-reset-template').addEventListener('click', async () => {
         document.getElementById('active-template').value = DEFAULT_TEMPLATE;
         state.template = DEFAULT_TEMPLATE;
-        localStorage.setItem('cfg_template_tg', DEFAULT_TEMPLATE);
+        await saveTemplateToServer(DEFAULT_TEMPLATE);
         showToast('Modelo restaurado para o padrão.', 'info');
         updateLivePreview();
     });
@@ -663,14 +659,31 @@ function initEventListeners() {
         document.getElementById('console-logs-area').innerHTML = '<div class="log-line text-muted">[sistema] Console limpo.</div>';
     });
 
-    document.getElementById('cfg-auto-blacklist').addEventListener('input', (e) => {
+    document.getElementById('cfg-auto-blacklist').addEventListener('change', async (e) => {
         state.automation.blacklist = e.target.value.trim();
-        localStorage.setItem('cfg_auto_blacklist', state.automation.blacklist);
+        await saveSettings();
     });
 
-    document.getElementById('cfg-auto-category').addEventListener('change', (e) => {
+    document.getElementById('cfg-auto-category').addEventListener('change', async (e) => {
         state.automation.category = e.target.value;
-        localStorage.setItem('cfg_auto_category', state.automation.category);
+        await saveSettings();
+    });
+
+    document.getElementById('chk-src-promobit').addEventListener('change', async () => {
+        await saveSettings();
+    });
+
+    document.getElementById('chk-src-gatry').addEventListener('change', async () => {
+        await saveSettings();
+    });
+
+    document.getElementById('cfg-auto-interval').addEventListener('change', async () => {
+        if (state.automation.active) {
+            await toggleAutomation();
+            await toggleAutomation();
+        } else {
+            await saveSettings();
+        }
     });
 
     // Instagram Controls bindings
@@ -679,9 +692,9 @@ function initEventListeners() {
         localStorage.setItem('cfg_ig_autopost', state.instagram.autoPost);
     });
 
-    document.getElementById('chk-auto-facebook').addEventListener('change', (e) => {
+    document.getElementById('chk-auto-facebook').addEventListener('change', async (e) => {
         state.automation.autoFacebook = e.target.checked;
-        localStorage.setItem('cfg_auto_facebook', state.automation.autoFacebook);
+        await saveSettings();
     });
 
     document.getElementById('ig-video-text').addEventListener('input', (e) => {
@@ -1947,7 +1960,69 @@ function writeLog(message, type = 'info') {
     logsArea.scrollTop = logsArea.scrollHeight;
 }
 
-function toggleAutomation() {
+function updateAutomationUI(active) {
+    const btn = document.getElementById('btn-toggle-automation');
+    const dot = document.getElementById('auto-dot');
+    const txt = document.getElementById('auto-txt-status');
+    
+    if (active) {
+        dot.className = 'status-dot pulsing';
+        txt.innerText = 'Autopost Ativo';
+        btn.className = 'btn-secondary';
+        btn.innerHTML = '<span>Parar Autopost</span> <i class="fa-solid fa-stop" style="color:var(--danger)"></i>';
+    } else {
+        dot.className = 'status-dot offline';
+        txt.innerText = 'Autopost Desativado';
+        btn.className = 'btn-primary';
+        btn.innerHTML = '<span>Iniciar Autopost</span> <i class="fa-solid fa-play"></i>';
+    }
+}
+
+let logsInterval = null;
+
+function startLogsPolling() {
+    if (logsInterval) return;
+    
+    logsInterval = setInterval(async () => {
+        const token = localStorage.getItem('auth_token');
+        if (!token) return;
+        
+        try {
+            const res = await fetch('/api/automation/logs', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.logs && data.logs.length > 0) {
+                    const logsArea = document.getElementById('console-logs-area');
+                    if (logsArea) {
+                        logsArea.innerHTML = '';
+                        data.logs.forEach(line => {
+                            const logEl = document.createElement('div');
+                            logEl.className = 'log-line';
+                            
+                            if (line.includes('✅') || line.includes('[SUCCESS]') || line.includes('sucesso')) {
+                                logEl.className += ' success';
+                            } else if (line.includes('❌') || line.includes('[ERROR]') || line.includes('ERRO')) {
+                                logEl.className += ' error';
+                            } else if (line.includes('⚠️') || line.includes('AVISO') || line.includes('[WARNING]') || line.includes('Pulado')) {
+                                logEl.className += ' warning';
+                            }
+                            
+                            logEl.innerText = line;
+                            logsArea.appendChild(logEl);
+                        });
+                        logsArea.scrollTop = logsArea.scrollHeight;
+                    }
+                }
+            }
+        } catch(e) {
+            console.error("Erro no polling de logs", e);
+        }
+    }, 3000);
+}
+
+async function toggleAutomation() {
     const token = state.config.tgToken;
     const chatId = state.config.tgChatId;
 
@@ -1966,46 +2041,41 @@ function toggleAutomation() {
         return;
     }
 
-    const btn = document.getElementById('btn-toggle-automation');
-    const badge = document.getElementById('auto-badge-status');
-    const dot = document.getElementById('auto-dot');
-    const txt = document.getElementById('auto-txt-status');
+    const activeState = !state.automation.active;
+    const minutes = parseInt(document.getElementById('cfg-auto-interval').value) || 10;
+    
+    const authToken = localStorage.getItem('auth_token');
+    const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': authToken ? `Bearer ${authToken}` : ''
+    };
 
-    if (state.automation.active) {
-        // Stop automation
-        state.automation.active = false;
-        if (state.automation.timer) {
-            clearInterval(state.automation.timer);
-            state.automation.timer = null;
+    try {
+        const res = await fetch('/api/automation/toggle', {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({
+                active: activeState,
+                interval: minutes
+            })
+        });
+        
+        if (!res.ok) throw new Error("Erro na rede ao alternar automação");
+        const data = await res.json();
+        
+        state.automation.active = data.active;
+        updateAutomationUI(state.automation.active);
+        
+        if (state.automation.active) {
+            writeLog(`Automação ativada no servidor! Frequência: a cada ${minutes} minuto(s).`, 'success');
+            showToast('Autopostagem iniciada no servidor!', 'success');
+        } else {
+            writeLog('Automação desativada no servidor pelo usuário.', 'warning');
+            showToast('Autopostagem parada no servidor.', 'info');
         }
-
-        dot.className = 'status-dot offline';
-        txt.innerText = 'Autopost Desativado';
-        btn.className = 'btn-primary';
-        btn.innerHTML = '<span>Iniciar Autopost</span> <i class="fa-solid fa-play"></i>';
-        
-        writeLog('Automação desativada pelo usuário.', 'warning');
-        showToast('Autopostagem automatizada parada.', 'info');
-    } else {
-        // Start automation
-        state.automation.active = true;
-        
-        dot.className = 'status-dot pulsing';
-        txt.innerText = 'Autopost Ativo';
-        btn.className = 'btn-secondary';
-        btn.innerHTML = '<span>Parar Autopost</span> <i class="fa-solid fa-stop" style="color:var(--danger)"></i>';
-
-        const minutes = parseInt(document.getElementById('cfg-auto-interval').value) || 10;
-        const msInterval = minutes * 60000;
-
-        writeLog(`Automação ativada! Frequência de varredura: a cada ${minutes} minuto(s).`, 'success');
-        showToast('Autopostagem iniciada!', 'success');
-
-        // Executar primeira varredura imediatamente
-        runAutomationScan();
-
-        // Agendar loops seguintes
-        state.automation.timer = setInterval(runAutomationScan, msInterval);
+    } catch (err) {
+        console.error("Falha ao alternar automação", err);
+        showToast('Erro ao conectar com o servidor de automação.', 'error');
     }
 }
 
