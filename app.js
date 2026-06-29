@@ -65,7 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateStatusIndicators();
             renderHistory();
             resetProductForm();
-            startLogsPolling();
+            // startLogsPolling();
         }
     });
 });
@@ -2055,41 +2055,28 @@ async function toggleAutomation() {
         return;
     }
 
-    const activeState = !state.automation.active;
-    const minutes = parseInt(document.getElementById('cfg-auto-interval').value) || 10;
+    state.automation.active = !state.automation.active;
+    updateAutomationUI(state.automation.active);
     
-    const authToken = localStorage.getItem('auth_token');
-    const headers = {
-        'Content-Type': 'application/json',
-        'Authorization': authToken ? `Bearer ${authToken}` : ''
-    };
+    const minutes = parseInt(document.getElementById('cfg-auto-interval').value) || 10;
 
-    try {
-        const res = await fetch('/api/automation/toggle', {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify({
-                active: activeState,
-                interval: minutes
-            })
-        });
+    if (state.automation.active) {
+        writeLog(`Autopostagem iniciada no navegador! Frequência: a cada ${minutes} minuto(s). Mantenha esta aba aberta.`, 'success');
+        showToast('Autopostagem iniciada!', 'success');
         
-        if (!res.ok) throw new Error("Erro na rede ao alternar automação");
-        const data = await res.json();
+        // Executar imediatamente
+        runAutomationScan();
         
-        state.automation.active = data.active;
-        updateAutomationUI(state.automation.active);
+        // Configurar timer
+        state.automation.timer = setInterval(runAutomationScan, minutes * 60 * 1000);
+    } else {
+        writeLog('Autopostagem parada pelo usuário.', 'warning');
+        showToast('Autopostagem parada.', 'info');
         
-        if (state.automation.active) {
-            writeLog(`Automação ativada no servidor! Frequência: a cada ${minutes} minuto(s).`, 'success');
-            showToast('Autopostagem iniciada no servidor!', 'success');
-        } else {
-            writeLog('Automação desativada no servidor pelo usuário.', 'warning');
-            showToast('Autopostagem parada no servidor.', 'info');
+        if (state.automation.timer) {
+            clearInterval(state.automation.timer);
+            state.automation.timer = null;
         }
-    } catch (err) {
-        console.error("Falha ao alternar automação", err);
-        showToast('Erro ao conectar com o servidor de automação.', 'error');
     }
 }
 

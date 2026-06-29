@@ -1569,7 +1569,7 @@ async function runServerSideAutomation() {
 }
 
 // Inicia loop automático no servidor a cada 30 segundos para verificação rápida de intervalos
-setInterval(runServerSideAutomation, 30 * 1000);
+// setInterval(runServerSideAutomation, 30 * 1000);
 
 app.listen(PORT, () => {
     console.log(`=============================================`);
