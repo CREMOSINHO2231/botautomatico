@@ -241,6 +241,21 @@ function setupAuthFormListeners() {
         }
     });
 
+    // Alternar entre Login e Cadastro
+    const btnGotoRegister = document.getElementById('btn-goto-register');
+    if (btnGotoRegister) {
+        btnGotoRegister.addEventListener('click', () => {
+            showAuthForm('setup');
+        });
+    }
+
+    const btnGotoLogin = document.getElementById('btn-goto-login');
+    if (btnGotoLogin) {
+        btnGotoLogin.addEventListener('click', () => {
+            showAuthForm('login');
+        });
+    }
+
     // Submit da Atualização de Licença (Reativar com Nova Chave)
     const licenseUpdateForm = document.getElementById('auth-license-update-form');
     if (licenseUpdateForm) {
