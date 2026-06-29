@@ -1075,6 +1075,21 @@ function detectPlatformServer(url) {
     return 'desconhecido';
 }
 
+function isShortlinkServer(url) {
+    if (!url) return false;
+    const lowercaseUrl = url.toLowerCase();
+    return lowercaseUrl.includes('shope.ee') || 
+           lowercaseUrl.includes('shp.ee') || 
+           lowercaseUrl.includes('s.shopee.com') || 
+           lowercaseUrl.includes('meli.la') || 
+           lowercaseUrl.includes('meli.li') || 
+           lowercaseUrl.includes('amzn.to') || 
+           lowercaseUrl.includes('s.click.aliexpress.com') ||
+           lowercaseUrl.includes('a.aliexpress.com') ||
+           lowercaseUrl.includes('aliexpress.com/e/') ||
+           lowercaseUrl.includes('mpago.la');
+}
+
 async function resolveRedirectUrlServer(url) {
     let currentUrl = url;
     let attempts = 0;
@@ -1082,6 +1097,19 @@ async function resolveRedirectUrlServer(url) {
     while (attempts < 5) {
         attempts++;
         try {
+            if (currentUrl.includes('promobit.com.br/Redirect/to/') || currentUrl.includes('promobit.com.br/link/') || currentUrl.includes('gatry.com/link') || isShortlinkServer(currentUrl)) {
+                try {
+                    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(currentUrl)}&_=${Date.now()}`;
+                    const res = await axios.get(proxyUrl, { timeout: 15000 });
+                    if (res.data && res.data.status && res.data.status.url) {
+                        currentUrl = res.data.status.url;
+                        continue;
+                    }
+                } catch (err) {
+                    // se der erro, continua
+                }
+            }
+            
             const platform = detectPlatformServer(currentUrl);
             
             if (platform !== 'desconhecido') {
