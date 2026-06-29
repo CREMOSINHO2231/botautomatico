@@ -767,14 +767,33 @@ function extractSchemaAndMetaValuesServer($) {
     return { title, image, price, oldPrice, coupon };
 }
 
+async function fetchViaProxyServer(url) {
+    try {
+        const res = await axios.get(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            },
+            timeout: 10000
+        });
+        return res.data;
+    } catch (directErr) {
+        try {
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+            const res = await axios.get(proxyUrl, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                },
+                timeout: 15000
+            });
+            return res.data;
+        } catch (proxyErr) {
+            throw new Error(`Direto: ${directErr.message} | Proxy: ${proxyErr.message}`);
+        }
+    }
+}
+
 async function scrapeProductInfoServer(url, platform) {
-    const res = await axios.get(url, {
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        },
-        timeout: 10000
-    });
-    const html = res.data;
+    const html = await fetchViaProxyServer(url);
     const $ = cheerio.load(html);
     
     let result = { title: '', price: '', oldPrice: '', image: '' };
@@ -883,14 +902,8 @@ async function fetchPromobitServer(selectedCat) {
         url = 'https://www.promobit.com.br/promocoes/pecas-e-acessorios-para-automoveis/';
     }
 
-    const res = await axios.get(url, {
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        },
-        timeout: 10000
-    });
-    
-    const $ = cheerio.load(res.data);
+    const html = await fetchViaProxyServer(url);
+    const $ = cheerio.load(html);
     const deals = [];
     const seenUrls = new Set();
 
@@ -975,14 +988,8 @@ async function fetchPromobitServer(selectedCat) {
 }
 
 async function fetchGatryServer() {
-    const res = await axios.get('https://gatry.com/', {
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        },
-        timeout: 10000
-    });
-    
-    const $ = cheerio.load(res.data);
+    const html = await fetchViaProxyServer('https://gatry.com/');
+    const $ = cheerio.load(html);
     const deals = [];
     $('article').each((i, article) => {
         const titleEl = $(article).find('h3 a').first();
@@ -1077,14 +1084,7 @@ async function resolveRedirectUrlServer(url) {
                 }
                 currentUrl = nextUrl;
             } else {
-                const getRes = await axios.get(currentUrl, {
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                    },
-                    timeout: 8000
-                });
-                
-                const html = getRes.data;
+                const html = await fetchViaProxyServer(currentUrl);
                 const $ = cheerio.load(html);
                 
                 const metaRefresh = $('meta[http-equiv="refresh"], meta[http-equiv="Refresh"]');
