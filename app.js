@@ -317,7 +317,8 @@ function setupAuthFormListeners() {
 
 /* ==========================================================================
    LOCALSTORAGE & CONFIG MANAGEMENT
-   ==========================async function loadSettings() {
+   ========================================================================== */
+async function loadSettings() {
     const token = localStorage.getItem('auth_token');
     const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
     
