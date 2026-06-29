@@ -1125,6 +1125,29 @@ async function resolveRedirectUrlServer(url) {
                 const html = await fetchViaProxyServer(currentUrl);
                 const $ = cheerio.load(html);
                 
+                // Extrair links de botões de redirecionamento do Promobit ou Gatry
+                const btnPromobit = $('a[href*="/Redirect/to/" i], a[href*="/link/" i]').first();
+                const btnGatry = $('a[href*="/link?" i]').first();
+                const genericLink = $('.btn-go-to-store, a[class*="go-to" i], a[class*="loja" i]').first();
+                
+                let redirectButtonUrl = null;
+                if (btnPromobit.length > 0) {
+                    redirectButtonUrl = btnPromobit.attr('href');
+                } else if (btnGatry.length > 0) {
+                    redirectButtonUrl = btnGatry.attr('href');
+                } else if (genericLink.length > 0) {
+                    redirectButtonUrl = genericLink.attr('href');
+                }
+                
+                if (redirectButtonUrl) {
+                    if (redirectButtonUrl.startsWith('/')) {
+                        const base = new URL(currentUrl).origin;
+                        redirectButtonUrl = base + redirectButtonUrl;
+                    }
+                    currentUrl = redirectButtonUrl;
+                    continue;
+                }
+                
                 const metaRefresh = $('meta[http-equiv="refresh"], meta[http-equiv="Refresh"]');
                 if (metaRefresh.length > 0) {
                     const content = metaRefresh.attr('content');
