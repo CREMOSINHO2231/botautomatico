@@ -1093,11 +1093,12 @@ function isShortlinkServer(url) {
 async function resolveRedirectUrlServer(url) {
     let currentUrl = url;
     let attempts = 0;
+    let cookies = [];
     
-    while (attempts < 5) {
+    while (attempts < 8) {
         attempts++;
         try {
-            if (currentUrl.includes('promobit.com.br/Redirect/to/') || currentUrl.includes('promobit.com.br/link/') || currentUrl.includes('gatry.com/link') || isShortlinkServer(currentUrl)) {
+            if (isShortlinkServer(currentUrl) && !currentUrl.includes('promobit.com.br') && !currentUrl.includes('gatry.com')) {
                 try {
                     const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(currentUrl)}&_=${Date.now()}`;
                     const res = await axios.get(proxyUrl, { timeout: 15000 });
@@ -1106,7 +1107,7 @@ async function resolveRedirectUrlServer(url) {
                         continue;
                     }
                 } catch (err) {
-                    // se der erro, continua
+                    // erro, continua
                 }
             }
             
@@ -1126,21 +1127,36 @@ async function resolveRedirectUrlServer(url) {
                 }
             }
             
+            const reqHeaders = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            };
+            if (cookies && cookies.length > 0) {
+                reqHeaders['Cookie'] = cookies.join('; ');
+            }
+            if (currentUrl.includes('promobit.com.br')) {
+                reqHeaders['Referer'] = url;
+            }
+
             const response = await axios.head(currentUrl, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                },
+                headers: reqHeaders,
                 maxRedirects: 0,
                 validateStatus: (status) => status >= 200 && status < 400
             }).catch(async err => {
                 return await axios.get(currentUrl, {
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                    },
+                    headers: reqHeaders,
                     maxRedirects: 0,
                     validateStatus: (status) => status >= 200 && status < 400
                 });
             });
+            
+            if (response && response.headers && response.headers['set-cookie']) {
+                const newCookies = response.headers['set-cookie'].map(c => c.split(';')[0]);
+                newCookies.forEach(nc => {
+                    const name = nc.split('=')[0];
+                    cookies = cookies.filter(c => c.split('=')[0] !== name);
+                    cookies.push(nc);
+                });
+            }
             
             if (response.headers.location) {
                 let nextUrl = response.headers.location;
@@ -1150,10 +1166,24 @@ async function resolveRedirectUrlServer(url) {
                 }
                 currentUrl = nextUrl;
             } else {
-                const html = await fetchViaProxyServer(currentUrl);
+                let html = response.data;
+                if (!html) {
+                    const getRes = await axios.get(currentUrl, {
+                        headers: reqHeaders,
+                        maxRedirects: 0,
+                        validateStatus: (status) => status >= 200 && status < 400
+                    });
+                    html = getRes.data;
+                }
+                
+                const jsRedirectMatch = html.match(/(?:l|location\.href)\s*=\s*['"]([^'"]+)['"]/i);
+                if (jsRedirectMatch && jsRedirectMatch[1]) {
+                    currentUrl = jsRedirectMatch[1];
+                    continue;
+                }
+                
                 const $ = cheerio.load(html);
                 
-                // Extrair links de botões de redirecionamento do Promobit ou Gatry
                 const btnPromobit = $('a[href*="/Redirect/to/" i], a[href*="/link/" i]').first();
                 const btnGatry = $('a[href*="/link?" i]').first();
                 const genericLink = $('.btn-go-to-store, a[class*="go-to" i], a[class*="loja" i]').first();
