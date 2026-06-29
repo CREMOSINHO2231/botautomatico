@@ -638,14 +638,32 @@ function initEventListeners() {
     document.getElementById('btn-post-facebook').addEventListener('click', handlePostFacebook);
 
     // Clear history
-    document.getElementById('btn-clear-history').addEventListener('click', () => {
+    document.getElementById('btn-clear-history').addEventListener('click', async () => {
         if (confirm('Deseja realmente limpar todo o histórico de ofertas e redefinir a fila de automação?')) {
-            state.history = [];
-            localStorage.setItem('cfg_history_tg', JSON.stringify(state.history));
-            state.automation.alreadyPostedDeals = [];
-            localStorage.setItem('cfg_already_posted', JSON.stringify([]));
-            renderHistory();
-            showToast('Histórico e fila de automação limpos!', 'info');
+            const token = localStorage.getItem('auth_token');
+            const headers = { 
+                'Content-Type': 'application/json',
+                'Authorization': token ? `Bearer ${token}` : ''
+            };
+            try {
+                const res = await fetch('/api/automation/clear-history', {
+                    method: 'POST',
+                    headers: headers
+                });
+                if (res.ok) {
+                    state.history = [];
+                    localStorage.setItem('cfg_history_tg', JSON.stringify(state.history));
+                    state.automation.alreadyPostedDeals = [];
+                    localStorage.setItem('cfg_already_posted', JSON.stringify([]));
+                    renderHistory();
+                    showToast('Histórico e fila de automação limpos no servidor!', 'info');
+                } else {
+                    throw new Error("Erro de resposta HTTP");
+                }
+            } catch (e) {
+                console.error("Erro ao limpar histórico no servidor", e);
+                showToast('Erro ao limpar histórico no servidor.', 'error');
+            }
         }
     });
 

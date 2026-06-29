@@ -501,6 +501,44 @@ app.get('/api/automation/logs', requireAuth, (req, res) => {
     res.json({ logs });
 });
 
+// ROTA: Limpar Histórico de Postagens
+app.post('/api/automation/clear-history', requireAuth, (req, res) => {
+    const authHeader = req.headers.authorization;
+    const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+    const email = getSessionEmail(token);
+    
+    const config = getAppConfig();
+    let user = null;
+    let userKey = null;
+    if (config && config.users && config.users[email]) {
+        user = config.users[email];
+        userKey = 'users';
+    } else if (config && config.admin && config.admin.email === email) {
+        user = config.admin;
+        userKey = 'admin';
+    }
+    
+    if (!user) {
+        return res.status(404).json({ error: "Usuário não encontrado." });
+    }
+    
+    user.alreadyPostedDeals = [];
+    
+    if (userKey === 'users') {
+        config.users[email] = user;
+    } else {
+        config.admin = user;
+    }
+    
+    writeUserLog(email, "Histórico de postagens limpo pelo usuário.", "info");
+    
+    if (saveAppConfig(config)) {
+        res.json({ success: true });
+    } else {
+        res.status(500).json({ error: "Erro ao limpar histórico no servidor." });
+    }
+});
+
 // ROTA: Página principal (Se não bater com nenhum arquivo estático, envia index.html)
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));

@@ -582,6 +582,47 @@ try {
             continue
         }
         
+        # ROTA: Limpar Histórico de Postagens
+        elseif ($rawPath -eq "/api/automation/clear-history" -and $request.HttpMethod -eq "POST") {
+            if (-not (Is-TokenValid $authToken)) {
+                Send-JsonResponse $response 401 @{ error = "Nao autorizado. Faca login primeiro." }
+                continue
+            }
+            
+            $email = Get-SessionEmail $authToken
+            $config = Get-AppConfig
+            
+            $user = $null
+            $userKey = $null
+            if ($config -and $config.users -and $config.users.$email) {
+                $user = $config.users.$email
+                $userKey = "users"
+            } elseif ($config -and $config.admin -and $config.admin.email -eq $email) {
+                $user = $config.admin
+                $userKey = "admin"
+            }
+            
+            if (-not $user) {
+                Send-JsonResponse $response 404 @{ error = "Usuario nao encontrado." }
+                continue
+            }
+            
+            $user.alreadyPostedDeals = @()
+            
+            if ($userKey -eq "users") {
+                $config.users.$email = $user
+            } else {
+                $config.admin = $user
+            }
+            
+            if (Save-AppConfig $config) {
+                Send-JsonResponse $response 200 @{ success = $true }
+            } else {
+                Send-JsonResponse $response 500 @{ error = "Erro ao limpar historico no servidor." }
+            }
+            continue
+        }
+        
         # ROTA: Proxy de CORS (Protegida)
         elseif ($rawPath -eq "/proxy") {
             # Validar autenticacao
