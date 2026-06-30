@@ -2606,7 +2606,7 @@ async function resolveFinalUrl(aggregatorUrl) {
                 const html = redirectJson.contents;
                 
                 // Extract target URL from javascript assignment: l = '...' or location.href = '...'
-                const finalUrlMatch = html.match(/(?:l|location\.href)\s*=\s*['"]([^'"]+)['"]/i);
+                const finalUrlMatch = html.match(/\b(?:l|location\.href)\b\s*=\s*['"]([^'"]+)['"]/i);
                 if (finalUrlMatch && finalUrlMatch[1]) {
                     let targetUrl = finalUrlMatch[1];
                     

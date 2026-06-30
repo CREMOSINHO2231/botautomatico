@@ -1176,7 +1176,7 @@ async function resolveRedirectUrlServer(url) {
                     html = getRes.data;
                 }
                 
-                const jsRedirectMatch = html.match(/(?:l|location\.href)\s*=\s*['"]([^'"]+)['"]/i);
+                const jsRedirectMatch = html.match(/\b(?:l|location\.href)\b\s*=\s*['"]([^'"]+)['"]/i);
                 if (jsRedirectMatch && jsRedirectMatch[1]) {
                     currentUrl = jsRedirectMatch[1];
                     continue;
