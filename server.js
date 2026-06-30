@@ -928,7 +928,119 @@ async function scrapeProductInfoServer(url, platform) {
     return result;
 }
 
+async function fetchPromobitSingleUrl(url) {
+    try {
+        const html = await fetchViaProxyServer(url);
+        const $ = cheerio.load(html);
+        const deals = [];
+        const seenUrls = new Set();
+
+        const scriptEls = $('script[type="application/ld+json"]');
+        let json = null;
+        scriptEls.each((i, el) => {
+            try {
+                const parsed = JSON.parse($(el).text());
+                if (parsed && (parsed['@type'] === 'ItemList' || parsed['type'] === 'ItemList') && parsed.itemListElement && parsed.itemListElement.length > 0) {
+                    json = parsed;
+                }
+            } catch(e) {}
+        });
+
+        if (json) {
+            try {
+                const listElements = json.itemListElement || [];
+                for (const elem of listElements) {
+                    const product = elem.item;
+                    if (product && product.offers && product.offers[0]) {
+                        const title = product.name;
+                        let relUrl = product.offers[0].url;
+                        if (relUrl) {
+                            const link = relUrl.startsWith('http') ? relUrl : `https://www.promobit.com.br${relUrl}`;
+                            const price = product.offers[0].price || '';
+                            const image = product.image ? (Array.isArray(product.image) ? product.image[0] : product.image) : '';
+                            if (!seenUrls.has(link)) {
+                                seenUrls.add(link);
+                                deals.push({
+                                    id: link,
+                                    title: title,
+                                    link: link,
+                                    source: 'promobit',
+                                    price: price ? String(price) : '',
+                                    image: image
+                                });
+                            }
+                        }
+                    }
+                }
+            } catch(e) {}
+        }
+
+        const anchors = $('a[href*="/oferta/"]');
+        anchors.each((i, a) => {
+            const href = $(a).attr('href');
+            let title = $(a).text() ? $(a).text().trim() : '';
+            if (!title) {
+                const img = $(a).find('img');
+                if (img.length > 0) title = img.attr('alt') || '';
+            }
+            if (href && title && title.length > 5) {
+                const link = href.startsWith('http') ? href : `https://www.promobit.com.br${href}`;
+                if (!seenUrls.has(link)) {
+                    seenUrls.add(link);
+                    
+                    let image = '';
+                    let price = '';
+                    
+                    const card = $(a).closest('[class*="offer" i], [class*="card" i], article').first();
+                    if (card.length > 0) {
+                        const imgEl = card.find('img').first();
+                        if (imgEl.length > 0) image = imgEl.attr('src') || imgEl.attr('data-src') || '';
+                        
+                        const priceEl = card.find('[class*="price" i], [class*="valor" i], [class*="amount" i]').first();
+                        if (priceEl.length > 0) price = priceEl.text();
+                    }
+                    
+                    deals.push({
+                        id: link,
+                        title: cleanTitleServer(title),
+                        link: link,
+                        source: 'promobit',
+                        price: price ? price.trim() : '',
+                        image: image
+                    });
+                }
+            }
+        });
+
+        return deals;
+    } catch (e) {
+        console.error(`Erro ao buscar Promobit na URL ${url}:`, e.message);
+        return [];
+    }
+}
+
 async function fetchPromobitServer(selectedCat) {
+    if (selectedCat === 'casa_eletro_pc_auto') {
+        const urls = [
+            'https://www.promobit.com.br/promocoes/eletrodomesticos/',
+            'https://www.promobit.com.br/promocoes/moveis-e-decoracao/',
+            'https://www.promobit.com.br/promocoes/informatica/',
+            'https://www.promobit.com.br/promocoes/pecas-e-acessorios-para-automoveis/'
+        ];
+        let allDeals = [];
+        const seenIds = new Set();
+        for (const url of urls) {
+            const deals = await fetchPromobitSingleUrl(url);
+            for (const deal of deals) {
+                if (!seenIds.has(deal.id)) {
+                    seenIds.add(deal.id);
+                    allDeals.push(deal);
+                }
+            }
+        }
+        return allDeals;
+    }
+
     let url = 'https://www.promobit.com.br/';
     if (selectedCat === 'informatica') {
         url = 'https://www.promobit.com.br/promocoes/informatica/';
@@ -938,91 +1050,13 @@ async function fetchPromobitServer(selectedCat) {
         url = 'https://www.promobit.com.br/promocoes/smartphones-tablets-e-telefones/';
     } else if (selectedCat === 'automotivo') {
         url = 'https://www.promobit.com.br/promocoes/pecas-e-acessorios-para-automoveis/';
+    } else if (selectedCat === 'eletrodomesticos') {
+        url = 'https://www.promobit.com.br/promocoes/eletrodomesticos/';
+    } else if (selectedCat === 'moveis') {
+        url = 'https://www.promobit.com.br/promocoes/moveis-e-decoracao/';
     }
 
-    const html = await fetchViaProxyServer(url);
-    const $ = cheerio.load(html);
-    const deals = [];
-    const seenUrls = new Set();
-
-    const scriptEls = $('script[type="application/ld+json"]');
-    let json = null;
-    scriptEls.each((i, el) => {
-        try {
-            const parsed = JSON.parse($(el).text());
-            if (parsed && (parsed['@type'] === 'ItemList' || parsed['type'] === 'ItemList') && parsed.itemListElement && parsed.itemListElement.length > 0) {
-                json = parsed;
-            }
-        } catch(e) {}
-    });
-
-    if (json) {
-        try {
-            const listElements = json.itemListElement || [];
-            for (const elem of listElements) {
-                const product = elem.item;
-                if (product && product.offers && product.offers[0]) {
-                    const title = product.name;
-                    let relUrl = product.offers[0].url;
-                    if (relUrl) {
-                        const link = relUrl.startsWith('http') ? relUrl : `https://www.promobit.com.br${relUrl}`;
-                        const price = product.offers[0].price || '';
-                        const image = product.image ? (Array.isArray(product.image) ? product.image[0] : product.image) : '';
-                        if (!seenUrls.has(link)) {
-                            seenUrls.add(link);
-                            deals.push({
-                                id: link,
-                                title: title,
-                                link: link,
-                                source: 'promobit',
-                                price: price ? String(price) : '',
-                                image: image
-                            });
-                        }
-                    }
-                }
-            }
-        } catch(e) {}
-    }
-
-    const anchors = $('a[href*="/oferta/"]');
-    anchors.each((i, a) => {
-        const href = $(a).attr('href');
-        let title = $(a).text() ? $(a).text().trim() : '';
-        if (!title) {
-            const img = $(a).find('img');
-            if (img.length > 0) title = img.attr('alt') || '';
-        }
-        if (href && title && title.length > 5) {
-            const link = href.startsWith('http') ? href : `https://www.promobit.com.br${href}`;
-            if (!seenUrls.has(link)) {
-                seenUrls.add(link);
-                
-                let image = '';
-                let price = '';
-                
-                const card = $(a).closest('[class*="offer" i], [class*="card" i], article').first();
-                if (card.length > 0) {
-                    const imgEl = card.find('img').first();
-                    if (imgEl.length > 0) image = imgEl.attr('src') || imgEl.attr('data-src') || '';
-                    
-                    const priceEl = card.find('[class*="price" i], [class*="valor" i], [class*="amount" i]').first();
-                    if (priceEl.length > 0) price = priceEl.text();
-                }
-                
-                deals.push({
-                    id: link,
-                    title: cleanTitleServer(title),
-                    link: link,
-                    source: 'promobit',
-                    price: price ? price.trim() : '',
-                    image: image
-                });
-            }
-        }
-    });
-
-    return deals;
+    return await fetchPromobitSingleUrl(url);
 }
 
 async function fetchGatryServer() {
@@ -1289,25 +1323,45 @@ async function runUserScan(email, user) {
 
     if (selectedCat && selectedCat !== 'all') {
         const initialCount = deals.length;
+        
+        // Definição de palavras-chave para categorias
+        const keywordsAutomotivo = ['pneu', 'capacete', 'óleo', 'lubrificante', 'carro', 'moto', 'motociclista', 'automotivo', 'multimídia', 'alto-falante', 'retrovisor', 'calota', 'freio', 'farol', 'bateria', 'carros', 'motos', 'aditivo', 'limpador', 'macaco', 'calibrador', 'sensor de estacionamento', 'alarme'];
+        const keywordsInformatica = ['notebook', 'pc', 'computador', 'monitor', 'teclado', 'mouse', 'ssd', 'hd', 'memória', 'ram', 'processador', 'ryzen', 'intel', 'geforce', 'radeon', 'gabinete', 'roteador', 'wifi', 'headset', 'placa de vídeo', 'placa de video', 'placa-mãe', 'placa mae', 'fonte', 'cooler', 'impressora'];
+        const keywordsGames = ['ps5', 'playstation', 'xbox', 'nintendo', 'switch', 'console', 'game', 'jogo', 'controle', 'gamer', 'headset gamer', 'ps4'];
+        const keywordsSmartphones = ['celular', 'smartphone', 'iphone', 'galaxy', 'motorola', 'xiaomi', 'redmi', 'capinha', 'película', 'carregador', 'smartwatch'];
+        const keywordsEletrodomesticos = ['geladeira', 'fogão', 'fogao', 'micro-ondas', 'microondas', 'lavadora', 'máquina de lavar', 'maquina de lavar', 'lava e seca', 'secadora', 'ar condicionado', 'ar-condicionado', 'frigobar', 'frezzer', 'freezer', 'cooktop', 'coifa', 'depurador', 'forno', 'aspirador', 'batedeira', 'liquidificador', 'airfryer', 'fritadeira', 'cafeteira', 'microondas', 'eletrodoméstico', 'eletrodomestico', 'multiprocessador', 'ferro de passar', 'ventilador', 'climatizador', 'tanquinho', 'adega', 'cervejeira', 'depurador'];
+        const keywordsMoveis = ['sofá', 'sofa', 'mesa', 'cadeira', 'guarda-roupa', 'guarda roupa', 'armário', 'armario', 'cama', 'colchão', 'colchao', 'cômoda', 'comoda', 'estante', 'rack', 'painel', 'poltrona', 'escrivaninha', 'aparador', 'cabeceira', 'guarda-livros', 'móvel', 'movel', 'móveis', 'moveis', 'criado-mudo', 'criado mudo', 'penteadeira', 'guarda roupa', 'estofado'];
+
         deals = deals.filter(deal => {
             if (deal.source === 'promobit') return true;
             const title = deal.title.toLowerCase();
             
             if (selectedCat === 'automotivo') {
-                const keywords = ['pneu', 'capacete', 'óleo', 'lubrificante', 'carro', 'moto', 'motociclista', 'automotivo', 'multimídia', 'alto-falante', 'retrovisor', 'calota', 'freio', 'farol', 'bateria', 'carros', 'motos'];
-                return keywords.some(k => title.includes(k));
+                return keywordsAutomotivo.some(k => title.includes(k));
             }
             if (selectedCat === 'informatica') {
-                const keywords = ['notebook', 'pc', 'computador', 'monitor', 'teclado', 'mouse', 'ssd', 'hd', 'memória', 'ram', 'processador', 'ryzen', 'intel', 'geforce', 'radeon', 'gabinete', 'roteador', 'wifi', 'headset'];
-                return keywords.some(k => title.includes(k));
+                return keywordsInformatica.some(k => title.includes(k));
             }
             if (selectedCat === 'games') {
-                const keywords = ['ps5', 'playstation', 'xbox', 'nintendo', 'switch', 'console', 'game', 'jogo', 'controle', 'gamer', 'headset gamer', 'ps4'];
-                return keywords.some(k => title.includes(k));
+                return keywordsGames.some(k => title.includes(k));
             }
             if (selectedCat === 'smartphones') {
-                const keywords = ['celular', 'smartphone', 'iphone', 'galaxy', 'motorola', 'xiaomi', 'redmi', 'capinha', 'película', 'carregador', 'smartwatch'];
-                return keywords.some(k => title.includes(k));
+                return keywordsSmartphones.some(k => title.includes(k));
+            }
+            if (selectedCat === 'eletrodomesticos') {
+                return keywordsEletrodomesticos.some(k => title.includes(k));
+            }
+            if (selectedCat === 'moveis') {
+                return keywordsMoveis.some(k => title.includes(k));
+            }
+            if (selectedCat === 'casa_eletro_pc_auto') {
+                const allCustomKeywords = [
+                    ...keywordsAutomotivo,
+                    ...keywordsInformatica,
+                    ...keywordsEletrodomesticos,
+                    ...keywordsMoveis
+                ];
+                return allCustomKeywords.some(k => title.includes(k));
             }
             return true;
         });
