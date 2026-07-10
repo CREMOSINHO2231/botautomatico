@@ -1428,7 +1428,7 @@ function cleanProductUrl(url) {
         const platform = detectPlatform(target);
         
         if (platform === 'mercadolivre') {
-            const cleanParams = ['url', 'as_source', 'as_campaign', 'matt_tool', 'matt_word', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
+            const cleanParams = ['url', 'as_source', 'as_campaign', 'matt_tool', 'matt_word', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'affiliate', 'ref'];
             cleanParams.forEach(p => parsed.searchParams.delete(p));
             return parsed.toString();
         } else if (platform === 'shopee') {
@@ -2575,6 +2575,22 @@ async function runAutomationScan() {
 }
 
 async function resolveFinalUrl(aggregatorUrl) {
+    if (aggregatorUrl && aggregatorUrl.includes('mercadolivre.com.br/social/')) {
+        try {
+            const json = await fetchViaProxy(aggregatorUrl);
+            const matches = json.contents.match(/"(https:\/\/produto\.mercadolivre\.com\.br\/[^"]+)"/);
+            if (matches && matches[1]) {
+                return matches[1].replace(/&amp;/g, '&');
+            }
+            const matches2 = json.contents.match(/"(https:\/\/www\.mercadolivre\.com\.br\/p\/[^"]+)"/);
+            if (matches2 && matches2[1]) {
+                return matches2[1].replace(/&amp;/g, '&');
+            }
+        } catch (e) {
+            console.error("Erro ao resolver link social do Mercado Livre no frontend:", e);
+        }
+    }
+
     try {
         let currentUrl = aggregatorUrl;
         let json = null;

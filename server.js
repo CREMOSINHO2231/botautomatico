@@ -645,7 +645,7 @@ async function convertToAffiliateServer(url, platform, userSettings) {
     try {
         const parsed = new URL(url);
         if (platform === 'mercadolivre') {
-            const cleanParams = ['click_id', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
+            const cleanParams = ['click_id', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'affiliate', 'ref'];
             cleanParams.forEach(p => parsed.searchParams.delete(p));
             cleanUrl = parsed.toString();
         } else if (platform === 'shopee') {
@@ -1178,6 +1178,24 @@ function isShortlinkServer(url) {
 async function resolveRedirectUrlServer(url) {
     if (!url) return url;
     
+    // Resolve Mercado Livre social pages (like /social/gatry) to final product pages
+    if (url.includes('mercadolivre.com.br/social/')) {
+        try {
+            const res = await fetchViaProxyServer(url);
+            const html = typeof res === 'string' ? res : res.contents;
+            const matches = html.match(/"(https:\/\/produto\.mercadolivre\.com\.br\/[^"]+)"/);
+            if (matches && matches[1]) {
+                return matches[1].replace(/&amp;/g, '&');
+            }
+            const matches2 = html.match(/"(https:\/\/www\.mercadolivre\.com\.br\/p\/[^"]+)"/);
+            if (matches2 && matches2[1]) {
+                return matches2[1].replace(/&amp;/g, '&');
+            }
+        } catch (e) {
+            console.error("Erro ao resolver link social do Mercado Livre no servidor:", e.message);
+        }
+    }
+    
     // Resolve Promobit aggregator pages to final store pages
     if (url.includes('promobit.com.br')) {
         try {
@@ -1406,9 +1424,13 @@ async function runUserScan(email, user) {
     }
 
     const selectedCat = user.automation.category || 'all';
-    const sources = user.automation.sources || { promobit: true, gatry: true };
+    const sources = {
+        promobit: !user.automation.sources || user.automation.sources.promobit !== false,
+        gatry: !user.automation.sources || user.automation.sources.gatry !== false
+    };
     
     writeUserLog(email, "Buscando novas ofertas nos agregadores...", "info");
+    writeUserLog(email, `Fontes ativas no servidor: Promobit=${sources.promobit}, Gatry=${sources.gatry}`, "info");
     
     let deals = [];
     
