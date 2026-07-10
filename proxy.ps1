@@ -25,15 +25,56 @@ function Get-Sha256Hash($string) {
 
 # Helper: Carregar Configuração
 function Get-AppConfig {
+    $localConfig = $null
+    $backupConfig = $null
+    
     if (Test-Path $configFile) {
         try {
             $content = Get-Content $configFile -Raw -ErrorAction Stop
-            return $content | ConvertFrom-Json
-        } catch {
-            return $null
+            $localConfig = $content | ConvertFrom-Json
+        } catch {}
+    }
+    
+    # Caminho de backup
+    $backupDir = Join-Path $configDir "..\bot-ofertas-backup"
+    $backupFile = Join-Path $backupDir "config.json"
+    
+    if (Test-Path $backupFile) {
+        try {
+            $content = Get-Content $backupFile -Raw -ErrorAction Stop
+            $backupConfig = $content | ConvertFrom-Json
+        } catch {}
+    }
+    
+    # Restaurar/Mesclar se houver backup
+    if ($backupConfig) {
+        if (-not $localConfig) {
+            $localConfig = $backupConfig
+            Save-AppConfig $localConfig
+        } else {
+            $localUsersCount = 0
+            if ($localConfig.users) { $localUsersCount = ($localConfig.users.PSObject.Properties | Measure-Object).Count }
+            $backupUsersCount = 0
+            if ($backupConfig.users) { $backupUsersCount = ($backupConfig.users.PSObject.Properties | Measure-Object).Count }
+            
+            if ($backupUsersCount -gt $localUsersCount) {
+                if (-not $localConfig.users) { $localConfig.users = @{} }
+                foreach ($prop in $backupConfig.users.PSObject.Properties) {
+                    if (-not $localConfig.users.($prop.Name)) {
+                        $localConfig.users.($prop.Name) = $prop.Value
+                    }
+                }
+                if ($backupConfig.admin) {
+                    if (-not $localConfig.admin) { $localConfig.admin = @{} }
+                    if ($backupConfig.admin.accessKey) { $localConfig.admin.accessKey = $backupConfig.admin.accessKey }
+                    if ($backupConfig.admin.accessKeyHash) { $localConfig.admin.accessKeyHash = $backupConfig.admin.accessKeyHash }
+                }
+                Save-AppConfig $localConfig
+            }
         }
     }
-    return $null
+    
+    return $localConfig
 }
 
 # Helper: Salvar Configuração
@@ -41,6 +82,15 @@ function Save-AppConfig($config) {
     try {
         $json = $config | ConvertTo-Json -Depth 5 -Compress
         Set-Content -Path $configFile -Value $json -Encoding UTF8 -ErrorAction Stop
+        
+        # Backup
+        $backupDir = Join-Path $configDir "..\bot-ofertas-backup"
+        if (-not (Test-Path $backupDir)) {
+            New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+        }
+        $backupFile = Join-Path $backupDir "config.json"
+        Set-Content -Path $backupFile -Value $json -Encoding UTF8 -ErrorAction Stop
+        
         return $true
     } catch {
         Write-Host "Erro ao salvar config.json: $($_.Exception.Message)" -ForegroundColor Red
@@ -668,13 +718,18 @@ try {
                 # Requisitar usando Invoke-WebRequest
                 $webResponse = Invoke-WebRequest -Uri $urlParam -UserAgent $userAgent -UseBasicParsing -TimeoutSec 10
                 
+                # Obter URL final após redirecionamentos
+                $finalUrl = $webResponse.BaseResponse.ResponseUri.AbsoluteUri
+                if (-not $finalUrl) { $finalUrl = $urlParam }
+                
                 $response.StatusCode = 200
                 $response.ContentType = "text/html; charset=utf-8"
+                $response.Headers.Add("x-final-url", $finalUrl)
                 
                 $bytes = [System.Text.Encoding]::UTF8.GetBytes($webResponse.Content)
                 $response.ContentLength64 = $bytes.Length
                 $response.OutputStream.Write($bytes, 0, $bytes.Length)
-                Write-Host "  -> Sucesso! ($($bytes.Length) bytes)" -ForegroundColor Gray
+                Write-Host "  -> Sucesso! ($($bytes.Length) bytes) [Final: $finalUrl]" -ForegroundColor Gray
             } catch {
                 Write-Host "  -> Falha! Erro: $($_.Exception.Message)" -ForegroundColor Red
                 Send-JsonResponse $response 500 @{ error = "Erro do proxy: $($_.Exception.Message)" }

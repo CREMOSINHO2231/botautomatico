@@ -32,22 +32,54 @@ function normalizeKey(value) {
 
 // Helper: Carregar chaves do banco de dados
 function loadKeys() {
+    let localKeys = {};
+    let backupKeys = {};
+    
     if (fs.existsSync(keysFile)) {
         try {
             const data = fs.readFileSync(keysFile, 'utf8');
-            return JSON.parse(data);
+            localKeys = JSON.parse(data);
         } catch (e) {
-            console.error("Erro ao ler keys.json, resetando banco...", e);
-            return {};
+            console.error("Erro ao ler keys.json local...", e);
         }
     }
-    return {};
+    
+    const backupDir = path.join(keysDir, '..', '..', 'bot-ofertas-backup');
+    const backupFile = path.join(backupDir, 'keys.json');
+    
+    if (fs.existsSync(backupFile)) {
+        try {
+            const data = fs.readFileSync(backupFile, 'utf8');
+            backupKeys = JSON.parse(data);
+        } catch (e) {
+            console.error("Erro ao ler keys.json do backup...", e);
+        }
+    }
+    
+    // Mesclar chaves do backup e locais
+    const mergedKeys = Object.assign({}, backupKeys, localKeys);
+    
+    // Se o backup contiver mais chaves, salvamos para o arquivo local também
+    if (JSON.stringify(mergedKeys) !== JSON.stringify(localKeys)) {
+        saveKeys(mergedKeys);
+    }
+    
+    return mergedKeys;
 }
 
 // Helper: Salvar chaves no banco de dados
 function saveKeys(keys) {
     try {
         fs.writeFileSync(keysFile, JSON.stringify(keys, null, 2), 'utf8');
+        
+        // Salvar cópia no backup
+        const backupDir = path.join(keysDir, '..', '..', 'bot-ofertas-backup');
+        const backupFile = path.join(backupDir, 'keys.json');
+        
+        if (!fs.existsSync(backupDir)) {
+            fs.mkdirSync(backupDir, { recursive: true });
+        }
+        fs.writeFileSync(backupFile, JSON.stringify(keys, null, 2), 'utf8');
         return true;
     } catch (e) {
         console.error("Erro ao salvar keys.json:", e);

@@ -126,6 +126,7 @@ const sessions = new Map(); // token -> expiration timestamp
 // Caminho do arquivo de configuração (no Railway usa o volume /app/data se existir)
 const configDir = fs.existsSync('/app/data') ? '/app/data' : __dirname;
 const configFile = path.join(configDir, 'config.json');
+const backupConfigFile = fs.existsSync('/app/data') ? null : path.join(configDir, '..', 'bot-ofertas-backup', 'config.json');
 
 // Helper: SHA-256 Hash
 function getSha256Hash(string) {
@@ -135,21 +136,62 @@ function getSha256Hash(string) {
 
 // Helper: Carregar Configuração
 function getAppConfig() {
+    let localConfig = null;
+    let backupConfig = null;
+    
     if (fs.existsSync(configFile)) {
         try {
             const content = fs.readFileSync(configFile, 'utf8');
-            return JSON.parse(content);
-        } catch (e) {
-            return null;
+            localConfig = JSON.parse(content);
+        } catch (e) {}
+    }
+    
+    const backupDir = path.join(configDir, '..', 'bot-ofertas-backup');
+    const backupFile = path.join(backupDir, 'config.json');
+    
+    if (backupConfigFile && fs.existsSync(backupFile)) {
+        try {
+            const content = fs.readFileSync(backupFile, 'utf8');
+            backupConfig = JSON.parse(content);
+        } catch (e) {}
+    }
+    
+    // Restaurar/Mesclar se houver backup
+    if (backupConfig) {
+        if (!localConfig) {
+            localConfig = backupConfig;
+            saveAppConfig(localConfig);
+        } else {
+            const localUsersCount = localConfig.users ? Object.keys(localConfig.users).length : 0;
+            const backupUsersCount = backupConfig.users ? Object.keys(backupConfig.users).length : 0;
+            if (backupUsersCount > localUsersCount) {
+                localConfig.users = Object.assign({}, backupConfig.users, localConfig.users);
+                if (backupConfig.admin) {
+                    if (!localConfig.admin) localConfig.admin = {};
+                    localConfig.admin.accessKey = backupConfig.admin.accessKey || localConfig.admin.accessKey;
+                    localConfig.admin.accessKeyHash = backupConfig.admin.accessKeyHash || localConfig.admin.accessKeyHash;
+                }
+                saveAppConfig(localConfig);
+            }
         }
     }
-    return null;
+    
+    return localConfig;
 }
 
 // Helper: Salvar Configuração
 function saveAppConfig(config) {
     try {
         fs.writeFileSync(configFile, JSON.stringify(config, null, 2), 'utf8');
+        
+        // Backup
+        if (backupConfigFile) {
+            const backupDir = path.dirname(backupConfigFile);
+            if (!fs.existsSync(backupDir)) {
+                fs.mkdirSync(backupDir, { recursive: true });
+            }
+            fs.writeFileSync(backupConfigFile, JSON.stringify(config, null, 2), 'utf8');
+        }
         return true;
     } catch (e) {
         console.error("Erro ao salvar config.json:", e);
@@ -385,6 +427,8 @@ app.get('/proxy', requireAuth, requireLicense, async (req, res) => {
             },
             timeout: 10000
         });
+        const finalUrl = response.request?.res?.responseUrl || url;
+        res.setHeader('x-final-url', finalUrl);
         res.send(response.data);
     } catch (err) {
         console.error(`[Proxy] Falha: ${err.message}`);
@@ -813,7 +857,7 @@ async function fetchViaProxyServer(url) {
             },
             timeout: 10000
         });
-        return res.data;
+        return { contents: res.data, finalUrl: res.request?.res?.responseUrl || url };
     } catch (directErr) {
         try {
             const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
@@ -823,7 +867,7 @@ async function fetchViaProxyServer(url) {
                 },
                 timeout: 15000
             });
-            return res.data;
+            return { contents: res.data, finalUrl: res.request?.res?.responseUrl || url };
         } catch (proxyErr) {
             throw new Error(`Direto: ${directErr.message} | Proxy: ${proxyErr.message}`);
         }
@@ -831,7 +875,8 @@ async function fetchViaProxyServer(url) {
 }
 
 async function scrapeProductInfoServer(url, platform) {
-    const html = await fetchViaProxyServer(url);
+    const proxyRes = await fetchViaProxyServer(url);
+    const html = typeof proxyRes === 'string' ? proxyRes : proxyRes.contents;
     const $ = cheerio.load(html);
     
     let result = { title: '', price: '', oldPrice: '', image: '' };
@@ -930,7 +975,8 @@ async function scrapeProductInfoServer(url, platform) {
 
 async function fetchPromobitSingleUrl(url) {
     try {
-        const html = await fetchViaProxyServer(url);
+        const proxyRes = await fetchViaProxyServer(url);
+        const html = typeof proxyRes === 'string' ? proxyRes : proxyRes.contents;
         const $ = cheerio.load(html);
         const deals = [];
         const seenUrls = new Set();
@@ -1060,7 +1106,8 @@ async function fetchPromobitServer(selectedCat) {
 }
 
 async function fetchGatryServer() {
-    const html = await fetchViaProxyServer('https://gatry.com/');
+    const proxyRes = await fetchViaProxyServer('https://gatry.com/');
+    const html = typeof proxyRes === 'string' ? proxyRes : proxyRes.contents;
     const $ = cheerio.load(html);
     const deals = [];
     $('article').each((i, article) => {
@@ -1093,6 +1140,9 @@ async function fetchGatryServer() {
 function detectPlatformServer(url) {
     if (!url) return 'desconhecido';
     const lowercaseUrl = url.toLowerCase();
+    if (lowercaseUrl.includes('promobit.com.br') || lowercaseUrl.includes('promoby.me') || lowercaseUrl.includes('gatry.com')) {
+        return 'desconhecido';
+    }
     
     if (lowercaseUrl.includes('shopee.com.br') || lowercaseUrl.includes('shope.ee')) {
         return 'shopee';
@@ -1121,10 +1171,78 @@ function isShortlinkServer(url) {
            lowercaseUrl.includes('s.click.aliexpress.com') ||
            lowercaseUrl.includes('a.aliexpress.com') ||
            lowercaseUrl.includes('aliexpress.com/e/') ||
-           lowercaseUrl.includes('mpago.la');
+           lowercaseUrl.includes('mpago.la') ||
+           lowercaseUrl.includes('promoby.me');
 }
 
 async function resolveRedirectUrlServer(url) {
+    if (!url) return url;
+    
+    // Resolve Promobit aggregator pages to final store pages
+    if (url.includes('promobit.com.br')) {
+        try {
+            const res = await fetchViaProxyServer(url);
+            const html = typeof res === 'string' ? res : res.contents;
+            const finalUrl = typeof res === 'string' ? url : res.finalUrl;
+            
+            if (finalUrl && finalUrl !== url && detectPlatformServer(finalUrl) !== 'desconhecido') {
+                return finalUrl;
+            }
+            
+            const $ = cheerio.load(html);
+            const btnPromobit = $('a[href*="/Redirect/to/" i], a[href*="/link/" i]').first();
+            if (btnPromobit.length > 0) {
+                let redirectButtonUrl = btnPromobit.attr('href');
+                if (redirectButtonUrl.startsWith('/')) {
+                    redirectButtonUrl = 'https://www.promobit.com.br' + redirectButtonUrl;
+                }
+                const redirRes = await fetchViaProxyServer(redirectButtonUrl);
+                const redirFinalUrl = typeof redirRes === 'string' ? redirectButtonUrl : redirRes.finalUrl;
+                if (redirFinalUrl && detectPlatformServer(redirFinalUrl) !== 'desconhecido') {
+                    return redirFinalUrl;
+                }
+            }
+        } catch (e) {
+            console.error("Erro ao resolver link do Promobit no servidor:", e.message);
+        }
+    }
+    
+    // Resolve Gatry aggregator pages to final store pages
+    if (url.includes('gatry.com')) {
+        try {
+            const res = await fetchViaProxyServer(url);
+            const html = typeof res === 'string' ? res : res.contents;
+            const finalUrl = typeof res === 'string' ? url : res.finalUrl;
+            
+            if (finalUrl && finalUrl !== url && detectPlatformServer(finalUrl) !== 'desconhecido') {
+                return finalUrl;
+            }
+            
+            const $ = cheerio.load(html);
+            const btnGatry = $('a[href*="/link?" i]').first();
+            const genericLink = $('.btn-go-to-store, a[class*="go-to" i], a[class*="loja" i]').first();
+            let redirectButtonUrl = null;
+            if (btnGatry.length > 0) {
+                redirectButtonUrl = btnGatry.attr('href');
+            } else if (genericLink.length > 0) {
+                redirectButtonUrl = genericLink.attr('href');
+            }
+            
+            if (redirectButtonUrl) {
+                if (redirectButtonUrl.startsWith('/')) {
+                    redirectButtonUrl = 'https://gatry.com' + redirectButtonUrl;
+                }
+                const redirRes = await fetchViaProxyServer(redirectButtonUrl);
+                const redirFinalUrl = typeof redirRes === 'string' ? redirectButtonUrl : redirRes.finalUrl;
+                if (redirFinalUrl && detectPlatformServer(redirFinalUrl) !== 'desconhecido') {
+                    return redirFinalUrl;
+                }
+            }
+        } catch (e) {
+            console.error("Erro ao resolver link do Gatry no servidor:", e.message);
+        }
+    }
+
     let currentUrl = url;
     let attempts = 0;
     let cookies = [];

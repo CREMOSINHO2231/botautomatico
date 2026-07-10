@@ -30,15 +30,50 @@ function Get-NormalizedKey($val) {
 
 # Helper: Carregar Licenças
 function Get-KeysDb {
+    $localKeys = @{}
+    $backupKeys = @{}
+    
     if (Test-Path $keysFile) {
         try {
             $content = Get-Content $keysFile -Raw -ErrorAction Stop
-            return $content | ConvertFrom-Json
-        } catch {
-            return @{}
+            $localKeys = $content | ConvertFrom-Json
+        } catch {}
+    }
+    
+    $backupDir = Join-Path $scriptDir "..\..\bot-ofertas-backup"
+    $backupFile = Join-Path $backupDir "keys.json"
+    
+    if (Test-Path $backupFile) {
+        try {
+            $content = Get-Content $backupFile -Raw -ErrorAction Stop
+            $backupKeys = $content | ConvertFrom-Json
+        } catch {}
+    }
+    
+    # Mesclar chaves do backup e locais
+    $mergedKeys = @{}
+    if ($backupKeys) {
+        foreach ($prop in $backupKeys.PSObject.Properties) {
+            $mergedKeys.($prop.Name) = $prop.Value
         }
     }
-    return @{}
+    if ($localKeys) {
+        foreach ($prop in $localKeys.PSObject.Properties) {
+            $mergedKeys.($prop.Name) = $prop.Value
+        }
+    }
+    
+    # Se o localKeys tiver menos chaves que o mergedKeys, salvamos de volta
+    $localCount = 0
+    if ($localKeys) { $localCount = ($localKeys.PSObject.Properties | Measure-Object).Count }
+    $mergedCount = 0
+    if ($mergedKeys) { $mergedCount = ($mergedKeys.PSObject.Properties | Measure-Object).Count }
+    
+    if ($mergedCount -gt $localCount) {
+        Save-KeysDb $mergedKeys
+    }
+    
+    return $mergedKeys
 }
 
 # Helper: Salvar Licenças
@@ -47,6 +82,15 @@ function Save-KeysDb($keys) {
         # Converter para formato JSON bonito e compacto
         $json = $keys | ConvertTo-Json -Depth 5 -Compress
         Set-Content -Path $keysFile -Value $json -Encoding UTF8 -ErrorAction Stop
+        
+        # Salvar cópia no backup
+        $backupDir = Join-Path $scriptDir "..\..\bot-ofertas-backup"
+        if (-not (Test-Path $backupDir)) {
+            New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+        }
+        $backupFile = Join-Path $backupDir "keys.json"
+        Set-Content -Path $backupFile -Value $json -Encoding UTF8 -ErrorAction Stop
+        
         return $true
     } catch {
         Write-Host "Erro ao salvar keys.json: $($_.Exception.Message)" -ForegroundColor Red

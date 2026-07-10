@@ -905,7 +905,11 @@ async function handleFetchAndConvert() {
 }
 
 function detectPlatform(url) {
+    if (!url) return 'desconhecido';
     const lowercaseUrl = url.toLowerCase();
+    if (lowercaseUrl.includes('promobit.com.br') || lowercaseUrl.includes('promoby.me') || lowercaseUrl.includes('gatry.com')) {
+        return 'desconhecido';
+    }
     if (lowercaseUrl.includes('amazon.com.br') || lowercaseUrl.includes('amzn.to')) {
         return 'amazon';
     } else if (lowercaseUrl.includes('mercadolivre.com.br') || lowercaseUrl.includes('mercadolivre.com') || lowercaseUrl.includes('ml-api.com.br') || lowercaseUrl.includes('mpago.la') || lowercaseUrl.includes('meli.la') || lowercaseUrl.includes('meli.li')) {
@@ -941,7 +945,8 @@ async function fetchViaProxy(url) {
                 }
                 if (!res.ok) throw new Error(`Local Proxy HTTP ${res.status}`);
                 const text = await res.text();
-                return { contents: text, finalUrl: u };
+                const finalUrlHeader = res.headers.get('x-final-url');
+                return { contents: text, finalUrl: finalUrlHeader || u };
             } catch (err) {
                 clearTimeout(id);
                 throw err;
@@ -1395,7 +1400,8 @@ function isShortlink(url) {
            lowercaseUrl.includes('s.click.aliexpress.com') ||
            lowercaseUrl.includes('a.aliexpress.com') ||
            lowercaseUrl.includes('aliexpress.com/e/') ||
-           lowercaseUrl.includes('mpago.la');
+           lowercaseUrl.includes('mpago.la') ||
+           lowercaseUrl.includes('promoby.me');
 }
 
 function extractTargetUrl(url) {
@@ -1709,6 +1715,11 @@ async function handlePostTelegram() {
 
     const imageUrl = state.currentProduct.image;
     const affUrl = state.currentProduct.convertedUrl;
+    
+    if (affUrl && (affUrl.includes('promobit.com.br') || affUrl.includes('promoby.me') || affUrl.includes('gatry.com'))) {
+        showToast('ERRO: Não é possível publicar um link do Promobit ou Gatry no Telegram. Insira o link direto da loja ou aguarde a resolução completa.', 'error');
+        return;
+    }
     
     showToast('Enviando post para o Telegram...', 'info');
 

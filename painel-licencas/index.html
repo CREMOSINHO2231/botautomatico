@@ -106,14 +106,16 @@
                     <h3 style="margin: 0 0 0.2rem 0; font-family: 'Outfit', sans-serif; font-size: 1.2rem;">Gerador e Ativação</h3>
                     <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted);">Crie chaves de acesso para enviar aos seus clientes.</p>
                 </div>
-                <div style="display: flex; gap: 0.8rem; align-items: center;">
+                <div style="display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap;">
                     <select id="new-key-days" style="padding: 0.6rem 1rem; border-radius: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-family: inherit; font-size: 0.9rem; outline: none; cursor: pointer;">
                         <option value="30" style="background: #1e1e2f;">30 Dias (1 Mês)</option>
                         <option value="60" style="background: #1e1e2f;">60 Dias (2 Meses)</option>
                         <option value="90" style="background: #1e1e2f;">90 Dias (3 Meses)</option>
                         <option value="180" style="background: #1e1e2f;">180 Dias (Semestre)</option>
                         <option value="365" style="background: #1e1e2f;">365 Dias (1 Ano)</option>
+                        <option value="custom" style="background: #1e1e2f;">Personalizado...</option>
                     </select>
+                    <input type="number" id="new-key-days-custom" min="2" placeholder="Ex: 5" style="display: none; width: 100px; padding: 0.6rem 1rem; border-radius: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-family: inherit; font-size: 0.9rem; outline: none;" value="2">
                     <button type="button" class="btn-primary" id="btn-generate-key">
                         <span>Gerar Nova Chave</span>
                         <i class="fa-solid fa-plus"></i>

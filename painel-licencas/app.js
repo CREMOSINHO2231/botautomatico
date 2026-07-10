@@ -30,6 +30,20 @@ function initEventListeners() {
     // Modal de Estender Licença
     document.getElementById('btn-cancel-extend').addEventListener('click', closeExtendModal);
     document.getElementById('btn-confirm-extend').addEventListener('click', handleConfirmExtend);
+
+    // Monitorar mudança no select de dias para exibir entrada customizada
+    const daysSelect = document.getElementById('new-key-days');
+    const customInput = document.getElementById('new-key-days-custom');
+    if (daysSelect && customInput) {
+        daysSelect.addEventListener('change', () => {
+            if (daysSelect.value === 'custom') {
+                customInput.style.display = 'block';
+                customInput.focus();
+            } else {
+                customInput.style.display = 'none';
+            }
+        });
+    }
 }
 
 // Testar Autenticação e Carregar Dados do Dashboard
@@ -95,10 +109,21 @@ let isGeneratingKey = false;
 // Gerar Nova Chave
 async function handleGenerateKey() {
     if (isGeneratingKey) return;
-    isGeneratingKey = true;
 
     const daysSelect = document.getElementById('new-key-days');
-    const days = parseInt(daysSelect.value) || 30;
+    let days;
+    if (daysSelect && daysSelect.value === 'custom') {
+        const customInput = document.getElementById('new-key-days-custom');
+        days = parseInt(customInput.value);
+        if (isNaN(days) || days < 2) {
+            showToast("Por favor, insira um número válido de dias (mínimo de 2 dias).", "warning");
+            return;
+        }
+    } else {
+        days = parseInt(daysSelect.value) || 30;
+    }
+
+    isGeneratingKey = true;
 
     const btn = document.getElementById('btn-generate-key');
     btn.disabled = true;
